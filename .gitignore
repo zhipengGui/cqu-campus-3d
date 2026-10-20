@@ -3,3 +3,20 @@ dist/
 work/
 __pycache__/
 *.log
+
+# Local production tools and internal records
+scripts/*
+!scripts/test_*.mts
+data/height_overrides.json
+data/landmark_details.json
+docs/*
+!docs/screenshots/
+docs/screenshots/*
+!docs/screenshots/v9-campus.png
+!docs/screenshots/v9-sports.png
+!docs/screenshots/v9-zonghe.png
+*.blend
+*.blend1
+.env
+.env.*
+!.env.example

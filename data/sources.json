@@ -1,13 +1,18 @@
 {
   "project": "huxi-3d-map",
-  "dataPolicy": "仅本地使用，不公开部署；如日后公开，须保留 ODbL 署名",
+  "dataPolicy": "公开展示与发布；OpenStreetMap 数据及其衍生数据库遵循 ODbL，保留署名和原始快照。",
   "sources": [
     {
       "name": "OpenStreetMap",
       "license": "ODbL 1.0",
       "attribution": "© OpenStreetMap 贡献者",
       "endpoint": "https://api.openstreetmap.org/api/0.6/map.json",
-      "bbox": [106.281, 29.584, 106.309, 29.606],
+      "bbox": [
+        106.281,
+        29.584,
+        106.309,
+        29.606
+      ],
       "snapshot": "data/snapshots/osm_snapshot_2026-10-13.json",
       "fetchedAt": "2026-10-13",
       "note": "Overpass 实例当日对本机 IP/全网均不可用，改用 OSM 官方主 API；快照进 git，不重复拉取"
