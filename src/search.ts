@@ -13,6 +13,25 @@ export interface SearchItem {
   mesh?: THREE.Mesh;
 }
 
+/** 搜索别名：拼音/常用简称 → 展开为标准子串再匹配（如 "shitang"→"食堂" 命中三个食堂）。 */
+const SEARCH_ALIASES: Record<string, string> = {
+  tushuguan: "图书馆", tsg: "图书馆",
+  yijiao: "一教", jiaoxuelou: "教学楼",
+  zonghelou: "综合楼",
+  likelou: "理科楼",
+  shitang: "食堂", yishitang: "第一食堂", ershitang: "第二食堂", sanshitang: "第三食堂",
+  tiyuguan: "体育馆", tyg: "体育馆",
+  kexuezhongxin: "科学中心",
+  jinhu: "缙湖", yunhu: "云湖", hehua: "荷苑",
+  songyuan: "松园", zhuyuan: "竹园", meiyuan: "梅园", lanyuan: "兰园",
+  juyuan: "菊园", heyuan: "荷园",
+  beimen: "北门", dongmen: "东门", ximen: "西门",
+  sushe: "园", qinshi: "园",
+  lanqiu: "球场", paiqiu: "球场", wangqiu: "球场",
+  yishulou: "艺术楼", shiyanshi: "实验", xiaoyiyuan: "医院",
+  gongke: "工科", xinxilou: "信息技术",
+};
+
 export function initSearch(
   input: HTMLInputElement,
   listEl: HTMLElement,
@@ -54,11 +73,12 @@ export function initSearch(
       hide();
       return;
     }
-    const lq = q.toLowerCase();
-    const matched = items.filter((it) => it.name.includes(q) || localName(it.name).toLowerCase().includes(lq));
+    const expanded = SEARCH_ALIASES[q.toLowerCase()] ?? q;
+    const lq = expanded.toLowerCase();
+    const matched = items.filter((it) => it.name.includes(expanded) || localName(it.name).toLowerCase().includes(lq));
     matched.sort((a, b) => {
-      const sa = a.name.startsWith(q) ? 0 : 1;
-      const sb = b.name.startsWith(q) ? 0 : 1;
+      const sa = a.name.startsWith(expanded) ? 0 : 1;
+      const sb = b.name.startsWith(expanded) ? 0 : 1;
       return sa - sb || a.name.length - b.name.length;
     });
     current = matched.slice(0, 8);

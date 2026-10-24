@@ -20,6 +20,7 @@ import {
 } from "./sceneBuilder";
 import { buildTrees, type TreeSystem, type Season } from "./trees";
 import { buildVegetation, type VegetationSystem } from "./vegetation";
+import { streamLandmarkGLBs } from "./landmarkStream";
 import { cancelFly, flyTo } from "./flyTo";import { LabelLayer } from "./labels";
 import {
   BuildingPicker,
@@ -171,8 +172,8 @@ scene.add(gGreen, gSports, gWater, gRoads, gTrees, gContext);
 
 // ---- GLB ----
 const gltfLoader = new GLTFLoader();
-const GLB_LANDMARKS = new Set(["library", "info", "gym", "gongke", "activity", "zonghe", "teaching1", "likelou", "science"]);
-const PRIORITY_ASSETS = new Set(["zonghe", "teaching1", "info", "library", "likelou", "gym", "activity", "gongke", "science"]);
+const GLB_LANDMARKS = new Set(["library", "info", "gym", "gongke", "activity", "zonghe", "teaching1", "likelou", "science", "canteen1", "canteen2", "canteen3"]);
+const PRIORITY_ASSETS = new Set(["zonghe", "teaching1", "info", "library", "likelou", "gym", "activity", "gongke", "science", "canteen1", "canteen2", "canteen3"]);
 const draco = new DRACOLoader().setDecoderPath(import.meta.env.BASE_URL + "draco/");
 gltfLoader.setDRACOLoader(draco);
 const detailAssets: { root: THREE.Group; far: THREE.Group; asset: string; building: Building; near?: THREE.Group; requested: boolean }[] = [];
@@ -207,7 +208,7 @@ async function loadLandmarkGLB(asset: string, b: Building): Promise<THREE.Group 
   if (!GLB_LANDMARKS.has(asset)) return null;
   const priority = PRIORITY_ASSETS.has(asset);
   try {
-    const gltf = await gltfLoader.loadAsync("models/" + asset + (priority ? ".far" : "") + ".glb?v=11");
+    const gltf = await gltfLoader.loadAsync("models/" + asset + (priority ? ".far" : "") + ".glb?v=12");
     const root = new THREE.Group();
     const [cx, cy] = bboxCenterOfBuilding(b);
     root.position.set(cx, 0, -cy); root.name = b.name;
@@ -229,7 +230,7 @@ function updateDetailAssets(): void {
     if (entry.near) { if(entry.near.visible!==close)shadowDirty=true;entry.near.visible = close; entry.far.visible = !close; }
     else if (close && !entry.requested) {
       entry.requested = true;
-      void gltfLoader.loadAsync("models/" + entry.asset + ".glb?v=11").then((gltf) => {
+      void gltfLoader.loadAsync("models/" + entry.asset + ".glb?v=12").then((gltf) => {
         entry.near = gltf.scene; tagAsset(gltf.scene, entry.building, entry.root);
         entry.root.add(gltf.scene);
         shadowDirty=true;
@@ -241,7 +242,7 @@ function updateDetailAssets(): void {
 function loadGateGLB(asset: string, gate: Gate): Promise<THREE.Group | null> {
   return new Promise((resolve) => {
     gltfLoader.load(
-      "models/" + asset + ".glb?v=11",
+      "models/" + asset + ".glb?v=12",
       (gltf) => {
         const g = gltf.scene;
         g.position.set(gate.x, 0, -gate.y);
@@ -429,18 +430,42 @@ async function loadScene(): Promise<void> {
   const generic = inside.filter((b) => !b.landmark);
   const buildings = buildBuildings(scene, generic);
   buildingsRef = buildings;
+  // 地标流式加载：参数化回退先上（首屏零 GLB 等待），far 档按距离排序双并发后台替换
   const landmarkDefs = inside.filter((b) => b.landmark);
-  const landmarkGroups = await Promise.all(landmarkDefs.map(async (b) => {
-    const glb = await loadLandmarkGLB(b.landmark, b);
-    if (glb) return glb;
+  const landmarkFallback = (b: Building): THREE.Group => {
     if (b.landmark === "gym") return buildGym(b);
     if (b.landmark === "library") return buildLibrary(b);
     if (b.landmark === "activity") return buildActivity(b);
     if (b.landmark === "zonghe") return buildZonghe(b);
     if (b.landmark === "likelou") return buildLikelou(b);
     return fallbackLandmark(b);
-  }));
-  for (const g of landmarkGroups) buildings.add(g);
+  };
+  const streamDefs = landmarkDefs.map((b) => {
+    const fallback = landmarkFallback(b);
+    buildings.add(fallback);
+    return { asset: b.landmark, building: b, fallback };
+  });
+  rerankLandmarks = streamLandmarkGLBs(streamDefs, {
+    parent: buildings,
+    center: controls.target.clone(),
+    load: (asset, b) => loadLandmarkGLB(asset, b),
+    onSwap: (asset, root) => {
+      // GLB 替换回退后，刷新地点表/标注选中引用（labels 用固定坐标无需改）
+      let mesh: THREE.Mesh | undefined;
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!mesh && m.isMesh && (m.userData as BuildingUserData).name) mesh = m;
+      });
+      const def = streamDefs.find((d) => d.asset === asset);
+      if (mesh && def) {
+        byName.set(def.building.name, mesh);
+        const it = places.find((p) => p.name === def.building.name);
+        if (it) it.mesh = mesh;
+        if (selectedPlace?.name === def.building.name) flyTargetBuilding = mesh;
+      }
+      shadowDirty = true;
+    },
+  });
   const manualGreenZones = data.green.filter((g) => g.manual);
   treeSys = buildTrees(gTrees, [...campusGreen,...sportsSiteAreas(campusGreen)], data.roads, campusWater, data.buildings, data.boundary?.pts, manualGreenZones);
   vegetation = buildVegetation(gTrees, { green: data.green, roads: data.roads, water: campusWater, buildings: data.buildings });
@@ -558,6 +583,7 @@ let statsTreeCount = 0;
 let statsVegCount = 0;
 let treeSys: TreeSystem | null = null;
 let vegetation: VegetationSystem | null = null;
+let rerankLandmarks: ((center: THREE.Vector3) => void) | null = null;
 
 // ---- 四季（季相只改植被实例色，与光影预设正交）----
 function applySeason(s: Season): void {
@@ -664,10 +690,12 @@ function renderLayers(): void {
 // ---- 画质（自动/高/低）----
 type Quality = "auto" | "high" | "low";
 let quality: Quality = "auto";
+let autoDowngraded = false; // auto 档运行时降到低配（与静态低配判断独立）
 
 function resolveHighQuality(): boolean {
   if (quality === "low") return false;
   if (quality === "high") return true;
+  if (autoDowngraded) return false; // auto 运行时已降档
   // 自动：移动端（粗指针）或内存 <=4GB 视为低配
   const nav = window.navigator as (typeof window.navigator) & { deviceMemory?: number };
   const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -689,9 +717,39 @@ document.querySelector("#quality-seg")!.addEventListener("click", (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".tb");
   if (!btn || !btn.dataset.q) return;
   quality = btn.dataset.q as Quality;
+  autoDowngraded = false; // 手动接管后重置自动降档
   applyQuality();
 });
 applyQuality();
+
+// ---- 自适应画质（auto 档：帧统计快降慢升+冷却，gxu quality 思路）----
+let fpsAcc = 0, fpsFrames = 0, lowSince = 0, highSince = 0, cooldownUntil = 0;
+const AUTO_LOW_FPS = 45, AUTO_HIGH_FPS = 55;
+
+function tickAdaptiveQuality(now: number, frameMs: number): void {
+  if (quality !== "auto" || frameMs <= 0) return;
+  // 60fps 帧帽下的真实帧间隔：跳帧时 frameMs>16.7 说明渲染吃紧
+  fpsAcc += frameMs; fpsFrames++;
+  if (fpsFrames < 45) return;
+  const avgFps = 1000 / (fpsAcc / fpsFrames);
+  fpsAcc = 0; fpsFrames = 0;
+  if (now < cooldownUntil) return;
+  if (!autoDowngraded && avgFps < AUTO_LOW_FPS) {
+    if (!lowSince) lowSince = now;
+    else if (now - lowSince > 2000) { // 快降：持续 2s 低于 45fps
+      autoDowngraded = true; lowSince = 0; cooldownUntil = now + 30000;
+      applyQuality();
+    }
+  } else if (autoDowngraded && avgFps > AUTO_HIGH_FPS) {
+    if (!highSince) highSince = now;
+    else if (now - highSince > 10000) { // 慢升：持续 10s 高于 55fps
+      autoDowngraded = false; highSince = 0; cooldownUntil = now + 30000;
+      applyQuality();
+    }
+  } else {
+    lowSince = 0; highSince = 0;
+  }
+}
 
 // ---- 光影 ----
 const LIGHTING_DEFS: { key: PresetName; name: Pair; sub: Pair }[] = [
@@ -1021,9 +1079,13 @@ window.addEventListener("keydown", (e) => {
 // ---- 渲染循环（60fps 帽）----
 let lastFrame = 0;
 let lastWalkTime=0;
+let lastTickMs = 0;
 const lastShadowTarget=new THREE.Vector3(Infinity,Infinity,Infinity);
 let lastShadowSize=-1;
 renderer.setAnimationLoop((t) => {
+  const nowMs = performance.now();
+  tickAdaptiveQuality(nowMs, lastTickMs ? nowMs - lastTickMs : 0);
+  lastTickMs = nowMs;
   const nextFrame=advanceFrame(lastFrame,t);if(nextFrame===null)return;
   lastFrame=nextFrame;
   // 水面波纹缓慢流动
@@ -1050,6 +1112,7 @@ renderer.setAnimationLoop((t) => {
   }
   labels.update(camera, controls.target);
   treeSys?.updateLod(camera.position);
+  rerankLandmarks?.(controls.target);
   renderer.render(scene, camera);
   labels.render(scene, camera);
 });
