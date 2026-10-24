@@ -1,0 +1,23 @@
+{
+  "asset": "canteen2",
+  "buildingId": 472504378,
+  "detail": "far",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -33.03496238357714,
+      -50.8,
+      -0.10000000000000009
+    ],
+    [
+      33.03496903564203,
+      37.784968869494115,
+      10.2
+    ]
+  ],
+  "triangles": 16142,
+  "bytes": 134112,
+  "materials": 5,
+  "heightConfidence": "OSM 13.2 default overridden to 3 storeys; flat roof per satellite (uniform brightness)"
+}

@@ -1,0 +1,23 @@
+{
+  "asset": "canteen3",
+  "buildingId": 774936140,
+  "detail": "far",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -37.10283592290582,
+      -36.05287520179898,
+      0.0
+    ],
+    [
+      37.102741699796944,
+      36.05274169979695,
+      9.625
+    ]
+  ],
+  "triangles": 6930,
+  "bytes": 60916,
+  "materials": 4,
+  "heightConfidence": "OSM levels=3 (9.9m tag)"
+}

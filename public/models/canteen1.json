@@ -1,0 +1,23 @@
+{
+  "asset": "canteen1",
+  "buildingId": 774933725,
+  "detail": "near",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -64.4,
+      -46.4,
+      0.0
+    ],
+    [
+      61.9,
+      46.4,
+      13.5
+    ]
+  ],
+  "triangles": 16651,
+  "bytes": 129372,
+  "materials": 5,
+  "heightConfidence": "OSM default 16.5 overridden: 2 storeys (documented) + roof truss 4.3m; satellite shows large pitched roof"
+}

@@ -59,6 +59,7 @@ export const PLACE_INFO: Record<string, PlaceInfo> = {
     descEn: "The west entrance by the Songyuan dormitory cluster, next to the science buildings and sports area.",
   },
   缙湖: {
+    photo: "photos/jinhu.jpg",
     desc: "校园核心湖景，湖畔绿道与石径环绕，是图书馆倒影的取景位。",
     descEn: "The campus's core lake, ringed by waterfront paths and stone trails — the best spot for the library's reflection.",
   },
@@ -83,5 +84,22 @@ export const PLACE_INFO: Record<string, PlaceInfo> = {
     desc: "数理学科教学科研楼，2015 年竣工，获中国建筑工程鲁班奖，南北两区布置。",
     descEn: "Teaching-and-research building for the mathematical and physical sciences, completed in 2015 and awarded the Luban Award; arranged in north and south zones.",
     photo: "photos/likelou.jpg",
+  },
+  第一食堂: {
+    desc: '松园与竹园之间的两层大食堂，2025 年整体装修改造。橙红坡顶大体量依卫星影像复原；屋顶脊线、天窗与入口门斗为估算细节。',
+    descEn: 'A two-storey dining hall between Songyuan and Zhuyuan, fully refurbished in 2025. The orange-red pitched volume follows satellite imagery; ridge details, skylights and the entry canopy are estimated.',
+  },
+  第二食堂: {
+    desc: '松园西侧的三层平顶食堂。白色框架立面与南向玻璃门厅依卫星影像与通用食堂形制复原，层高与机组为估算。',
+    descEn: 'A three-storey flat-roofed canteen west of Songyuan. The white frame facade and south glass lobby follow satellite imagery; storey heights and plant rooms are estimated.',
+  },
+  第三食堂: {
+    desc: '兰园以南的三层食堂，楼体随地块斜置。红橙平顶与深挑檐依卫星影像复原，层数来自 OSM。',
+    descEn: 'A three-storey canteen south of Lanyuan, rotated with its block. The orange flat roof and deep eaves follow satellite imagery; storeys from OSM.',
+  },
+  莲池: {
+    desc: '图书馆东北侧的小水面，官方图集中的校园一景。周边绿化为示意分布。',
+    descEn: 'A small pond northeast of the Library, featured in the official campus gallery. Surrounding planting is illustrative.',
+    photo: 'photos/lianchi.jpg',
   },
 };
