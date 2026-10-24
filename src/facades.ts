@@ -21,6 +21,18 @@ const WALL_TONES: Record<string, string[]> = {
   office: ["#f4f2ec", "#e9e8e2"],
 };
 
+/** 楼型色相微差（gxu palette 同思路）：宿舍偏暖、教学偏冷、其余中性，
+ *  叠在明度哈希之上，避免千楼一色。系数 ±4% 内，观感克制。 */
+export const STYLE_TINT: Record<FacadeStyle, [number, number, number]> = {
+  dorm: [1.035, 1.0, 0.955],
+  teaching: [0.985, 1.005, 1.03],
+  lab: [1.0, 1.01, 1.015],
+  library: [1.035, 1.0, 0.965],
+  canteen: [1.015, 1.0, 0.985],
+  hall: [1.02, 1.0, 0.975],
+  office: [1.0, 1.0, 1.0],
+};
+
 const ROOF_COLOR = 0xd9d9d3;
 const PARAPET_COLOR = 0xe9e7e0;
 const ROOF_UNIT_COLOR = 0xb9bdbf;
@@ -33,9 +45,17 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
 }
 
 /** 把 0..1 的画布画成一张"一层楼"立面 tile */
-function drawTile(style: FacadeStyle, wall: string): HTMLCanvasElement {
+function drawTile(style: FacadeStyle, wall: string, variant = 0): HTMLCanvasElement {
   const S = 256;
   const [c, g] = canvas(S, S);
+  if (style === "dorm") {
+    // 宿舍：平涂涂料墙（无渐变/无噪点，避免大理石质感），仅留楼板线
+    g.fillStyle = wall;
+    g.fillRect(0, 0, S, S);
+    g.fillStyle = "rgba(120,124,128,0.28)";
+    g.fillRect(0, 0, S, S * 0.03);
+    return c;
+  }
   // 墙面底色 + 轻微上下渐变（脏旧感）
   const grad = g.createLinearGradient(0, 0, 0, S);
   grad.addColorStop(0, wall);
@@ -66,20 +86,6 @@ function drawTile(style: FacadeStyle, wall: string): HTMLCanvasElement {
       g.fillStyle = "rgba(60,70,80,0.25)";
       g.fillRect(0, S * 0.78, S, S * 0.06);
     }
-  } else if (style === "dorm") {
-    // 密排竖窗：每 tile 4 樘
-    const w0 = S * 0.14;
-    const h0 = S * 0.5;
-    const y0 = S * 0.22;
-    for (let i = 0; i < 4; i++) {
-      const x0 = S * (0.08 + i * 0.23);
-      g.fillStyle = i % 2 === 0 ? win : winLite;
-      g.fillRect(x0, y0, w0, h0);
-      g.fillStyle = "rgba(255,255,255,0.55)";
-      g.fillRect(x0, y0 + h0, w0, 4);
-      g.fillStyle = "rgba(0,0,0,0.18)";
-      g.fillRect(x0 + w0 * 0.46, y0, 2, h0); // 窗框中梃
-    }
   } else if (style === "canteen" || style === "hall") {
     // 大玻璃面：占楼层下部 ~60%
     const y0 = S * 0.22;
@@ -107,6 +113,15 @@ function drawTile(style: FacadeStyle, wall: string): HTMLCanvasElement {
       g.fillRect(x0, y0 + h0, w0, 3);
     }
   }
+  // 墙面微噪点（固定种子，±4 明度）：消除大面积纯色的塑料感（gxu stone 贴图同思路的轻量版）
+  let nSeed = variant * 7919 + style.charCodeAt(0);
+  const nRand = () => { nSeed = (nSeed * 1664525 + 1013904223) | 0; return ((nSeed >>> 9) & 0x7f) / 0x80; };
+  const img = g.getImageData(0, 0, S, S);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const d = (nRand() - 0.5) * 8;
+    img.data[i] += d; img.data[i + 1] += d; img.data[i + 2] += d;
+  }
+  g.putImageData(img, 0, 0);
   return c;
 }
 
@@ -119,7 +134,46 @@ function shade(hex: string, amt: number): string {
   return `rgb(${r},${g2},${b})`;
 }
 
+/** 夜景窗灯贴图：黑底 + 暖白窗洞（对齐 drawTile 的窗位，按格哈希 ~55% 点亮、亮度微差）。 */
+function drawGlowTile(style: FacadeStyle, variant: number): HTMLCanvasElement {
+  const S = 256;
+  const [c, g] = canvas(S, S);
+  g.fillStyle = "#000000";
+  g.fillRect(0, 0, S, S);
+  // 稳定伪随机：同楼每次生成一致
+  let seed = variant * 2654435761 + style.length * 40503;
+  const rand = (): number => {
+    seed = (seed * 1664525 + 1013904223) | 0;
+    return ((seed >>> 8) & 0xffff) / 0x10000;
+  };
+  const lit = (k = 0.55): { on: boolean; alpha: number } => {
+    const on = rand() < k;
+    return { on, alpha: on ? 0.62 + rand() * 0.38 : 0 };
+  };
+  const warm = (a: number) => `rgba(255,214,158,${a.toFixed(3)})`;
+  const pane = (x: number, y: number, w: number, h: number, k?: number) => {
+    const { on, alpha } = lit(k);
+    if (!on) return;
+    g.fillStyle = warm(alpha);
+    g.fillRect(x, y, w, h);
+  };
+  if (style === "teaching" || style === "library" || style === "lab") {
+    const y0 = S * 0.18, h0 = S * 0.46, x0 = S * 0.03, w = S * 0.94 / 8;
+    for (let i = 0; i < 8; i++) pane(x0 + i * w + 1.5, y0, w - 2, h0);
+  } else if (style === "dorm") {
+    // 宿舍窗为几何构件（sceneBuilder），墙面无发光
+  } else if (style === "canteen" || style === "hall") {
+    const y0 = S * 0.22, h0 = S * 0.6, x0 = S * 0.02, w = S * 0.96 / 6;
+    for (let i = 0; i < 6; i++) pane(x0 + i * w + 1, y0, w - 2, h0, 0.45);
+  } else {
+    const w0 = S * 0.26, h0 = S * 0.44, y0 = S * 0.24;
+    for (const x0 of [S * 0.16, S * 0.58]) pane(x0, y0, w0, h0);
+  }
+  return c;
+}
+
 const tileCache = new Map<string, THREE.Texture>();
+const glowCache = new Map<string, THREE.Texture>();
 
 export function facadeTexture(style: FacadeStyle, variant: number): THREE.Texture {
   const key = `${style}:${variant}`;
@@ -127,7 +181,7 @@ export function facadeTexture(style: FacadeStyle, variant: number): THREE.Textur
   if (hit) return hit;
   const tones = WALL_TONES[style] ?? WALL_TONES.office;
   const wall = tones[variant % tones.length];
-  const tex = new THREE.CanvasTexture(drawTile(style, wall));
+  const tex = new THREE.CanvasTexture(drawTile(style, wall, variant));
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -140,9 +194,102 @@ export function variantCount(style: FacadeStyle): number {
   return (WALL_TONES[style] ?? WALL_TONES.office).length;
 }
 
-export const roofMaterial = new THREE.MeshLambertMaterial({ color: ROOF_COLOR });
+/** 夜景窗灯自发光贴图（与 facadeTexture 同 key 对应），供 wallMat.emissiveMap。 */
+export function facadeGlowTexture(style: FacadeStyle, variant: number): THREE.Texture {
+  const key = `${style}:${variant}`;
+  const hit = glowCache.get(key);
+  if (hit) return hit;
+  const tex = new THREE.CanvasTexture(drawGlowTile(style, variant));
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  glowCache.set(key, tex);
+  return tex;
+}
+
+/** 夜景窗灯的发光色（applyBuildingEmissive 判断 emissiveMap 材质时使用）。 */
+export const WINDOW_GLOW = 0xffc98a;
+
+/** 屋顶混凝土噪点贴图（8m 重复；屋顶 UV 为 Extrude 顶面米制坐标）。 */
+function roofNoiseTexture(): THREE.Texture {
+  const S = 128;
+  const [c, g] = canvas(S, S);
+  const hex = ((ROOF_COLOR >> 16) & 255) + "," + ((ROOF_COLOR >> 8) & 255) + "," + (ROOF_COLOR & 255);
+  g.fillStyle = "rgb(" + hex + ")";
+  g.fillRect(0, 0, S, S);
+  let seed = 20261;
+  const rand = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 9) & 0x7f) / 0x80; };
+  const img = g.getImageData(0, 0, S, S);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const d = (rand() - 0.5) * 14;
+    img.data[i] += d; img.data[i + 1] += d; img.data[i + 2] += d;
+  }
+  g.putImageData(img, 0, 0);
+  g.fillStyle = "rgba(90,92,88,0.30)";
+  g.fillRect(0, 0, S, 2); g.fillRect(0, 0, 2, S); // 分缝（8m 一道）
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1 / 8, 1 / 8);
+  return t;
+}
+
+export const roofMaterial = new THREE.MeshLambertMaterial({ map: roofNoiseTexture(), color: 0xffffff });
 export const parapetMaterial = new THREE.MeshLambertMaterial({ color: PARAPET_COLOR });
 export const roofUnitMaterial = new THREE.MeshLambertMaterial({ color: ROOF_UNIT_COLOR });
+
+/** ---- 宿舍精修材质（P1：红坡顶+三维窗）---- */
+/** 宿舍瓦楞贴图（2m 重复），底色可参数化（红/灰/橙棕，卫星实测分组） */
+function dormTileTexture(base: string): THREE.Texture {
+  const S = 256;
+  const [c, g] = canvas(S, S);
+  g.fillStyle = base;
+  g.fillRect(0, 0, S, S);
+  for (let y = 0; y < S; y += 22) {
+    g.fillStyle = "rgba(0,0,0,0.22)";
+    g.fillRect(0, y, S, 4);
+    g.fillStyle = "rgba(255,255,255,0.08)";
+    g.fillRect(0, y + 4, S, 3);
+    for (let x = 0; x < S; x += 26) {
+      g.fillStyle = `rgba(0,0,0,${0.05 + ((x / 26 + y / 22) % 3) * 0.04})`;
+      g.fillRect(x + ((y / 22) % 2) * 13, y + 4, 2, 18);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+export type DormRoofKind = "red" | "gray" | "brown";
+const dormTileCache = new Map<DormRoofKind, THREE.MeshLambertMaterial>();
+/** 宿舍坡顶材质：red=老园区红瓦 / gray=荷园灰瓦 / brown=菊园橙棕瓦（z17 卫星色彩统计） */
+export function dormRoofMaterial(kind: DormRoofKind): THREE.MeshLambertMaterial {
+  let m = dormTileCache.get(kind);
+  if (!m) {
+    const base = kind === "red" ? "#8a4437" : kind === "gray" ? "#8d9094" : "#9c6238";
+    m = new THREE.MeshLambertMaterial({ map: dormTileTexture(base), side: THREE.DoubleSide });
+    dormTileCache.set(kind, m);
+  }
+  return m;
+}
+
+/** 按楼名判定瓦色分组 */
+export function dormRoofKindOf(name: string | undefined): DormRoofKind {
+  if (name?.startsWith("荷园")) return "gray";
+  if (name?.startsWith("菊园")) return "brown";
+  return "red";
+}
+export const dormGableMaterial = new THREE.MeshLambertMaterial({ color: 0xe9dcd2, side: THREE.DoubleSide });
+export const dormWindowFrameMaterial = new THREE.MeshLambertMaterial({ color: 0xf4f1ea });
+export const dormWindowGlassMaterial = new THREE.MeshLambertMaterial({ color: 0x46586a });
+/** 夜景点亮窗（隔开间，与 glass 同规格）——DayNight 切 emissive */
+export const dormWindowLitMaterial = new THREE.MeshLambertMaterial({ color: 0x46586a });
+export const dormBalconyMaterial = new THREE.MeshLambertMaterial({ color: 0xe4e0d5 });
 
 function hash01(id: number | string): number {
   let n: number;

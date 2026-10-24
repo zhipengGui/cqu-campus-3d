@@ -87,4 +87,11 @@ export class LabelLayer {
   render(scene: THREE.Scene, camera: THREE.Camera): void {
     this.renderer.render(scene, camera);
   }
+
+  /** 语言切换：按映射函数重写全部标签显示文本（内部 text 键不变，active 匹配不受影响）。 */
+  relabel(mapper: (zh: string) => string): void {
+    for (const e of this.entries) {
+      e.obj.element.textContent = mapper(e.text);
+    }
+  }
 }

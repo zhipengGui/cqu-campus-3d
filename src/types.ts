@@ -37,6 +37,7 @@ export interface Area {
   kind?: string;
   sport?: string;
   inside?: boolean;
+  manual?: boolean; // 人工判读绿地（private/manual_green.json）：context 渲染 + 校外植树区
   outers: [number, number][][];
   inners: [number, number][][];
 }

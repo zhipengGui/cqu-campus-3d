@@ -30,8 +30,8 @@ export function framePoints(points: THREE.Vector3[], fov: number,
   const dir=direction.clone().normalize(),right=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),dir).normalize();
   const up=new THREE.Vector3().crossVectors(dir,right).normalize();
   const tangent=Math.tan(THREE.MathUtils.degToRad(fov/2));
-  const horizontal=tangent*(rect.right-rect.left)/viewport.height*.94;
-  const vertical=tangent*(rect.bottom-rect.top)/viewport.height*.94;
+  const horizontal=tangent*(rect.right-rect.left)/viewport.height*.99;
+  const vertical=tangent*(rect.bottom-rect.top)/viewport.height*.99;
   let distance=55;
   for(const point of points) {
     const offset=point.clone().sub(target),depth=offset.dot(dir);

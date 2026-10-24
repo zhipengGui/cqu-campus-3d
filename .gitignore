@@ -20,3 +20,4 @@ docs/screenshots/*
 .env
 .env.*
 !.env.example
+data/private/

@@ -32,7 +32,7 @@ export function contextSurface(area:Area,ring:Point[]):THREE.BufferGeometry {
   function triangle(a:Vertex,b:Vertex,c:Vertex):void {
     const edges=[Math.hypot(a.point[0]-b.point[0],a.point[1]-b.point[1]),Math.hypot(b.point[0]-c.point[0],b.point[1]-c.point[1]),Math.hypot(c.point[0]-a.point[0],c.point[1]-a.point[1])];
     const longest=Math.max(...edges),distances=[a.distance,b.distance,c.distance];
-    if(Math.min(...distances)-longest>200||Math.max(...distances)+longest<0)return;
+    if(Math.min(...distances)-longest>320||Math.max(...distances)+longest<0)return;
     if(longest>24) {
       const vertices=[a,b,c],i=edges.indexOf(longest),start=vertices[i],end=vertices[(i+1)%3],other=vertices[(i+2)%3];
       const mid=vertex([(start.point[0]+end.point[0])/2,(start.point[1]+end.point[1])/2]);
@@ -78,8 +78,8 @@ export function buildContext(data: SceneData): THREE.Group {
     const positions=geo.attributes.position,colors=new Float32Array(positions.count*3);
     const base=new THREE.Color(hex),color=base.clone();
     for(let i=0;i<positions.count;i++) {
-      const distance=distanceToCampus([positions.getX(i),-positions.getZ(i)],ring!);
-      color.copy(base).lerp(background,THREE.MathUtils.smoothstep(distance,70,200)*.92);
+    const distance=distanceToCampus([positions.getX(i),-positions.getZ(i)],ring!);
+    color.copy(base).lerp(background,THREE.MathUtils.smoothstep(distance,90,300)*.92);
       colors.set([color.r,color.g,color.b],i*3);
     }
     geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
@@ -96,7 +96,7 @@ export function buildContext(data: SceneData): THREE.Group {
   for(let x=Math.floor((Math.min(...xs)-200)/step)*step;x<Math.max(...xs)+200;x+=step) {
     for(let y=Math.floor((Math.min(...ys)-200)/step)*step;y<Math.max(...ys)+200;y+=step) {
       const distance=distanceToCampus([x+step/2,y+step/2],ring);
-      if(distance<=0||distance>185)continue;
+      if(distance<=0||distance>305)continue;
       for(const [u,v] of [[x,y],[x+step,y],[x+step,y+step],[x,y],[x+step,y+step],[x,y+step]])ground.push(u,-.18,-v);
     }
   }
@@ -109,14 +109,14 @@ export function buildContext(data: SceneData): THREE.Group {
     if(!geometry.attributes.position.count){geometry.dispose();continue;}
     if(add('surfaces',geometry,isWater?0x9bafaf:0xb7c2a7)){metrics.areas++;root.userData.surfaceIds.push(area.id);}
   }
-  for(const road of clipRoads(data.roads,ring,200)) {
+  for(const road of clipRoads(data.roads,ring,320)) {
     const [a,b]=road.pts,mid:[number,number]=[(a[0]+b[0])/2,(a[1]+b[1])/2];
     if(inCampus(mid,ring))continue;
     const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);if(len<.05)continue;
     const width=Math.min(12,road.width)/2,nx=-dy/len*width,ny=dx/len*width;
     if(add('roads',flat([[a[0]+nx,a[1]+ny],[b[0]+nx,b[1]+ny],[b[0]-nx,b[1]-ny],[a[0]-nx,a[1]-ny]],.018),0x999d94))metrics.roadSegments++;
   }
-  const buildings=data.buildings.filter(b=>!b.inside&&b.polygon.every(p=>distanceToCampus(p,ring)<=200));
+  const buildings=data.buildings.filter(b=>!b.inside&&b.polygon.every(p=>distanceToCampus(p,ring)<=320));
   buildings.sort((a,b)=>distanceToCampus(a.polygon[0],ring)-distanceToCampus(b.polygon[0],ring));
   for(const building of buildings) {
     const polygon=building.polygon.filter((p,i,r)=>i===0||Math.hypot(p[0]-r[i-1][0],p[1]-r[i-1][1])>2);

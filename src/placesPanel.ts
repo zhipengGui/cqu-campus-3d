@@ -3,6 +3,7 @@ import type { SceneData } from "./types";
 import type { SearchItem } from "./search";
 import { bboxCenter } from "./sceneBuilder";
 import {sportsSiteAreas,sportsFrame} from './sports';
+import { GROUP_LABEL, getLang, localName, tr } from "./i18n";
 
 /** 左侧"校园浏览"面板：分类地点列表，点击丝滑飞行。数据与搜索共用。 */
 
@@ -123,7 +124,8 @@ export function initPlacesPanel(
     const head = document.createElement("button");
     head.type = "button";
     head.className = "pg-head";
-    head.innerHTML = `${group}<span class="cnt">${inGroup.length}</span>`;
+    const g = GROUP_LABEL[group];
+    head.innerHTML = `${g ? tr(g) : group}<span class="cnt">${inGroup.length}</span>`;
     head.addEventListener("click", () => {
       wrap.classList.toggle("folded");
     });
@@ -137,8 +139,8 @@ export function initPlacesPanel(
       row.className = "place";
       row.innerHTML =
         `<span class="num">${e.num}</span>` +
-        `<span class="nm">${e.name}</span>` +
-        `<span class="badge">${e.kind === "water" ? "湖" : e.kind === "gate" ? "门" : ""}</span>` +
+        `<span class="nm">${localName(e.name)}</span>` +
+        `<span class="badge">${e.kind === "water" ? (getLang() === "en" ? "Lake" : "湖") : e.kind === "gate" ? (getLang() === "en" ? "Gate" : "门") : ""}</span>` +
         `<span class="chev">›</span>`;
       row.addEventListener("click", () => {
         for (const r of rowsByName.values()) for (const x of r) x.classList.remove("active");

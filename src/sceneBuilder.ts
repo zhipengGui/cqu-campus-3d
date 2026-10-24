@@ -3,14 +3,23 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Area, Building, Road, SceneData } from "./types";
 import { detailedSport } from './sports';
 import {
+  dormBalconyMaterial,
+  dormGableMaterial,
+  dormWindowFrameMaterial,
+  dormWindowGlassMaterial,
+  dormWindowLitMaterial,
+  facadeGlowTexture,
   facadeTexture,
   idHash01,
   offsetPolygon,
   parapetMaterial,
+  dormRoofMaterial,
+  dormRoofKindOf,
   rewriteFacadeUV,
   roofMaterial,
   roofUnitMaterial,
   styleVariant,
+  STYLE_TINT,
   type FacadeStyle,
 } from "./facades";
 
@@ -288,12 +297,250 @@ export function buildBoundaryLine(boundary: { pts: [number, number][] }): THREE.
   return line;
 }
 
+/** 宿舍精修：红坡顶（长条两坡/近方四坡）+ 三维窗阵 + 凸阳台 + 单元门。
+ *  卫星实证形态；几何按需并入全局 merged 数组（draw call 恒定）。 */
+interface DormRect { x0: number; y0: number; x1: number; y1: number }
+
+/** 单矩形两坡/四坡顶（含山墙；interiorEnds 指定该端与他翼相接、跳过山墙防穿帮）。 */
+function pitchRoofRect(r: DormRect, height: number, interiorNeg: boolean, interiorPos: boolean): {
+  roof: THREE.BufferGeometry; gable: THREE.BufferGeometry | null;
+} | null {
+  const w = r.x1 - r.x0, d = r.y1 - r.y0;
+  if (w < 6 || d < 6) return null;
+  const along = w >= d;
+  const cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
+  const spanHalf = (along ? d : w) / 2 + 0.45;
+  const ridge = height + 2.3, eaveZ = height + 0.15;
+  const ridgeHalfBase = (along ? w : d) / 2 + 0.45;
+  const ratio = Math.min(w, d) / Math.max(w, d);
+  const ridgeHalf = ratio > 0.75 ? ridgeHalfBase * 0.35 : ridgeHalfBase;
+  const v = (ex: number, no: number, z: number): [number, number, number] =>
+    along ? [cx + ex, z, cy + no] : [cx + no, z, cy + ex];
+  const roofPos: number[] = [], roofIdx: number[] = [], roofUv: number[] = [];
+  for (const side of [-1, 1]) {
+    const base = roofPos.length / 3;
+    const quad: [number, number, number][] = [
+      v(-ridgeHalfBase, side * spanHalf, eaveZ),
+      v(ridgeHalfBase, side * spanHalf, eaveZ),
+      v(ridgeHalf, 0, ridge),
+      v(-ridgeHalf, 0, ridge),
+    ];
+    for (const [px, py, pz] of quad) {
+      roofPos.push(px, py, -pz);
+      roofUv.push((px - (cx - ridgeHalfBase)) / 2, (py - eaveZ) / 2);
+    }
+    roofIdx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  // 四坡端斜面（脊线短于檐口时）
+  for (const end of [-1, 1]) {
+    if (ridgeHalf >= ridgeHalfBase - 0.01) break;
+    for (const side of [-1, 1]) {
+      const base = roofPos.length / 3;
+      const tri: [number, number, number][] = [
+        v(end * ridgeHalfBase, side * spanHalf, eaveZ),
+        v(end * ridgeHalfBase, -side * spanHalf, eaveZ),
+        v(end * ridgeHalf, 0, ridge),
+      ];
+      for (const [px, py, pz] of end === side ? tri : [tri[1], tri[0], tri[2]]) roofPos.push(px, py, -pz);
+      roofIdx.push(base, base + 1, base + 2);
+    }
+  }
+  const roof = new THREE.BufferGeometry();
+  roof.setAttribute("position", new THREE.Float32BufferAttribute(roofPos, 3));
+  roof.setAttribute("uv", new THREE.Float32BufferAttribute(roofUv, 2));
+  roof.setIndex(roofIdx);
+  roof.computeVertexNormals();
+  // 山墙（接缝端跳过）
+  const gablePos: number[] = [], gableIdx: number[] = [];
+  for (const end of [-1, 1]) {
+    if ((end === -1 && interiorNeg) || (end === 1 && interiorPos)) continue;
+    const base = gablePos.length / 3;
+    const a = v(end * ridgeHalfBase, -spanHalf, height);
+    const b = v(end * ridgeHalfBase, spanHalf, height);
+    const c = v(end * ridgeHalf, 0, ridge);
+    for (const [px, py, pz] of end === -1 ? [a, b, c] : [b, a, c]) gablePos.push(px, py, -pz);
+    gableIdx.push(base, base + 1, base + 2);
+  }
+  if (!gablePos.length) return { roof, gable: null };
+  const gable = new THREE.BufferGeometry();
+  gable.setAttribute("position", new THREE.Float32BufferAttribute(gablePos, 3));
+  gable.setIndex(gableIdx);
+  gable.computeVertexNormals();
+  return { roof, gable };
+}
+
+/** 任意（含 L/U 形）轮廓 → 轴对齐条带矩形分解（围合式宿舍每翼独立起坡）。 */
+function decomposeRects(poly: [number, number][]): DormRect[] {
+  const xsSet = new Set<number>();
+  for (const [x] of poly) xsSet.add(Math.round(x * 2) / 2);
+  const xs = [...xsSet].sort((a, b) => a - b);
+  const rects: DormRect[] = [];
+  for (let i = 0; i < xs.length - 1; i++) {
+    const xa = xs[i], xb = xs[i + 1];
+    if (xb - xa < 0.4) continue;
+    const mid = (xa + xb) / 2;
+    const ys: number[] = [];
+    for (let k = 0; k < poly.length; k++) {
+      const [px, py] = poly[k];
+      const [qx, qy] = poly[(k + 1) % poly.length];
+      if ((px <= mid && qx > mid) || (qx <= mid && px > mid)) {
+        ys.push(py + ((qy - py) * (mid - px)) / (qx - px));
+      }
+    }
+    ys.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < ys.length; k += 2) {
+      if (ys[k + 1] - ys[k] >= 3) rects.push({ x0: xa, x1: xb, y0: ys[k], y1: ys[k + 1] });
+    }
+  }
+  // 同 y 区间的相邻条带横向合并
+  const merged: DormRect[] = [];
+  for (const r of rects.sort((a, b) => (a.y0 - b.y0) || (a.x0 - b.x0))) {
+    const hit = merged.find(
+      (m) => Math.abs(m.y0 - r.y0) < 0.05 && Math.abs(m.y1 - r.y1) < 0.05 && Math.abs(m.x1 - r.x0) < 0.3,
+    );
+    if (hit) hit.x1 = Math.max(hit.x1, r.x1);
+    else merged.push({ ...r });
+  }
+  return merged;
+}
+
+function dormRoofParts(poly: [number, number][], height: number): {
+  roofs: THREE.BufferGeometry[]; gables: THREE.BufferGeometry[];
+} | null {
+  // 主朝向 = 最长边方向（兰园等斜置楼：轴对齐 bbox 会错位，坡顶在旋转坐标系里生成）
+  let bestLen = 0, theta = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i];
+    const [bx, by] = poly[(i + 1) % poly.length];
+    const L = Math.hypot(bx - ax, by - ay);
+    if (L > bestLen) {
+      bestLen = L;
+      theta = Math.atan2(by - ay, bx - ax);
+    }
+  }
+  // 归一到 [-45°,45°]（矩形楼的长边等价方向）
+  while (theta > Math.PI / 4) theta -= Math.PI / 2;
+  while (theta < -Math.PI / 4) theta += Math.PI / 2;
+  const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length;
+  const cy = poly.reduce((s, p) => s + p[1], 0) / poly.length;
+  const cosT = Math.cos(-theta), sinT = Math.sin(-theta);
+  const local: [number, number][] = poly.map(([x, y]) => {
+    const dx = x - cx, dy = y - cy;
+    return [dx * cosT - dy * sinT, dx * sinT + dy * cosT];
+  });
+  const rects = decomposeRects(local);
+  if (!rects.length) return null;
+  let polyArea = 0;
+  for (let i = 0; i < local.length; i++) {
+    polyArea += local[i][0] * local[(i + 1) % local.length][1] - local[(i + 1) % local.length][0] * local[i][1];
+  }
+  polyArea = Math.abs(polyArea) / 2;
+  const rectArea = rects.reduce((s, r) => s + (r.x1 - r.x0) * (r.y1 - r.y0), 0);
+  if (rectArea < 0.55 * polyArea) return null; // 形状过于破碎，回退平顶
+  // 生成后把顶点从局部坐标转回世界坐标（局部 x/y 平面旋转 theta，z 不变）
+  const cosB = Math.cos(theta), sinB = Math.sin(theta);
+  const unrotate = (geo: THREE.BufferGeometry): THREE.BufferGeometry => {
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const lx = pos.getX(i), ly = -pos.getZ(i); // 世界 z=-北 → 局部北
+      const wx = cx + lx * cosB - ly * sinB;
+      const wy = cy + lx * sinB + ly * cosB;
+      pos.setXYZ(i, wx, pos.getY(i), -wy);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    return geo;
+  };
+  const roofs: THREE.BufferGeometry[] = [];
+  const gables: THREE.BufferGeometry[] = [];
+  for (const r of rects) {
+    const w = r.x1 - r.x0, d = r.y1 - r.y0;
+    const along = w >= d;
+    // 与他翼相接的端头（同楼另一矩形贴着该边）→ 跳过山墙
+    const touching = (edge: "neg" | "pos"): boolean =>
+      rects.some((o) => {
+        if (o === r) return false;
+        const ov = Math.min(r.y1, o.y1) - Math.max(r.y0, o.y0);
+        const oh = Math.min(r.x1, o.x1) - Math.max(r.x0, o.x0);
+        return along
+          ? ov > 2 && ((edge === "neg" && Math.abs(o.x1 - r.x0) < 0.3) || (edge === "pos" && Math.abs(o.x0 - r.x1) < 0.3))
+          : oh > 2 && ((edge === "neg" && Math.abs(o.y1 - r.y0) < 0.3) || (edge === "pos" && Math.abs(o.y0 - r.y1) < 0.3));
+      });
+    const part = pitchRoofRect(r, height, touching("neg"), touching("pos"));
+    if (!part) continue;
+    roofs.push(unrotate(part.roof));
+    if (part.gable) gables.push(unrotate(part.gable));
+  }
+  return roofs.length ? { roofs, gables } : null;
+}
+
+/** 沿轮廓边布宿舍窗阵/阳台/门（几何并入全局数组）。 */
+function dormFacadeDetails(
+  b: Building,
+  geos: { frame: THREE.BufferGeometry[]; glass: THREE.BufferGeometry[]; glassLit: THREE.BufferGeometry[]; balcony: THREE.BufferGeometry[]; door: THREE.BufferGeometry[] },
+): void {
+  // 统一 CCW（外法向 = (uy,-ux)；OSM 轮廓绕向混杂，CW 楼的窗会嵌墙）
+  let poly = b.polygon;
+  let sa = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i];
+    const [bx, by] = poly[(i + 1) % poly.length];
+    sa += ax * by - bx * ay;
+  }
+  if (sa < 0) poly = [...poly].reverse();
+  const floors = Math.max(1, Math.round(b.height / 3.3));
+  const box = (cx: number, cy: number, cz: number, w: number, h: number, d: number, angle: number) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.rotateY(angle);
+    g.translate(cx, cz, -cy);
+    return g;
+  };
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i];
+    const [bx, by] = poly[(i + 1) % poly.length];
+    const dx = bx - ax, dy = by - ay;
+    const L = Math.hypot(dx, dy);
+    if (L < 6) continue;
+    const angle = -Math.atan2(-dy, dx);
+    const ux = dx / L, uy = dy / L;
+    const nx = uy, ny = -ux; // 外法向（多边形 CCW 时朝外）
+    const bays = Math.max(1, Math.round(L / 3.6));
+    for (let f = 0; f < floors; f++) {
+      const z = f * 3.3 + 2.1;
+      for (let k = 0; k < bays; k++) {
+        const t = (k + 0.5) / bays;
+        const px = ax + dx * t + nx * 0.09, py = ay + dy * t + ny * 0.09;
+        // 隔开间交替点亮（夜景窗灯的几何版）
+        const bucket = (f + k + Math.floor(i * 7.13)) % 3 === 0 ? geos.glassLit : geos.glass;
+        bucket.push(box(px, py, z, 1.9, 1.55, 0.08, angle));
+        if (f > 0 && k % 2 === 1 && L > 24) {
+          // 阳台栏板（二层起隔开间）
+          const bx2 = ax + dx * t + nx * 0.42, by2 = ay + dy * t + ny * 0.42;
+          geos.balcony.push(box(bx2, by2, f * 3.3 + 1.35, 3.1, 1.05, 0.75, angle));
+        }
+      }
+      // 层间窗框横条
+      geos.frame.push(box(ax + dx * 0.5 + nx * 0.07, ay + dy * 0.5 + ny * 0.07, z + 0.87, L, 0.14, 0.06, angle));
+      geos.frame.push(box(ax + dx * 0.5 + nx * 0.07, ay + dy * 0.5 + ny * 0.07, z - 0.87, L, 0.14, 0.06, angle));
+    }
+    // 单元门（每条长边中点，首层）
+    if (L > 20) {
+      const mx = ax + dx * 0.5 + nx * 0.12, my = ay + dy * 0.5 + ny * 0.12;
+      geos.door.push(box(mx, my, 1.15, 2.6, 2.3, 0.16, angle));
+      geos.frame.push(box(mx - nx * 0.1, my - ny * 0.1, 2.55, 3.4, 0.35, 1.1, angle)); // 雨棚
+    }
+  }
+}
+
 /** 楼栋：立面纹理 + 女儿墙 + 屋顶设备块。landmark 楼由调用方过滤后另行构建。 */
 export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE.Group {
   const group = new THREE.Group();
   group.name = "buildings";
   const parapetGeos: THREE.BufferGeometry[] = [];
   const unitGeos: THREE.BufferGeometry[] = [];
+  const dormRoofGeos: Record<string, THREE.BufferGeometry[]> = { red: [], gray: [], brown: [] };
+  const dormGableGeos: THREE.BufferGeometry[] = [];
+  const dormParts = { frame: [] as THREE.BufferGeometry[], glass: [] as THREE.BufferGeometry[], glassLit: [] as THREE.BufferGeometry[], balcony: [] as THREE.BufferGeometry[], door: [] as THREE.BufferGeometry[] };
 
   for (const b of buildings) {
     const shape = shapeFromRings(b.polygon, b.holes);
@@ -310,8 +557,14 @@ export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE
     const tex = facadeTexture(style, variant).clone();
     tex.needsUpdate = true;
     tex.repeat.set(1, floors); // v 已按楼层归一，纵向重复 = 层数
-    const wallMat = new THREE.MeshLambertMaterial({ map: tex });
-    wallMat.color.setScalar(0.93 + hash01(b.id) * 0.09);
+    const glow = facadeGlowTexture(style, variant).clone();
+    glow.needsUpdate = true;
+    glow.repeat.set(1, floors);
+    const wallMat = new THREE.MeshLambertMaterial({ map: tex, emissiveMap: glow });
+    wallMat.emissive.setHex(0x000000);
+    const tint = STYLE_TINT[style] ?? [1, 1, 1];
+    const lum = 0.93 + hash01(b.id) * 0.09;
+    wallMat.color.setRGB(tint[0] * lum, tint[1] * lum, tint[2] * lum);
 
     // ExtrudeGeometry 分组：material 0 = 顶底面，1 = 侧面
     const mesh = new THREE.Mesh(geo, [roofMaterial, wallMat]);
@@ -331,13 +584,19 @@ export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE
     mesh.receiveShadow = true;
     group.add(mesh);
 
-    if (b.area >= 80) {
+    const pitched = style === "dorm" ? dormRoofParts(b.polygon, b.height) : null;
+    if (!pitched && b.area >= 80) {
       const pg = parapetGeometry(b.polygon, b.height);
       if (pg) parapetGeos.push(pg);
     }
-    if (b.area >= 1200) {
+    if (!pitched && b.area >= 1200) {
       const n = Math.max(1, Math.min(6, Math.floor(b.area / 900)));
       addRoofUnits(unitGeos, b, n);
+    }
+    if (pitched) {
+      for (const r of pitched.roofs) dormRoofGeos[dormRoofKindOf(b.name)].push(r);
+      dormGableGeos.push(...pitched.gables);
+      dormFacadeDetails(b, dormParts);
     }
   }
   scene.add(group);
@@ -345,6 +604,32 @@ export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE
   if (parapetGeos.length) {
     const merged = mergeGeometries(parapetGeos)!;
     const m = new THREE.Mesh(merged, parapetMaterial);
+    scene.add(m);
+  }
+  for (const kind of ["red", "gray", "brown"] as const) {
+    const list = dormRoofGeos[kind];
+    if (!list.length) continue;
+    const merged = mergeGeometries(list)!;
+    const m = new THREE.Mesh(merged, dormRoofMaterial(kind));
+    m.castShadow = true;
+    scene.add(m);
+  }
+  if (dormGableGeos.length) {
+    const merged = mergeGeometries(dormGableGeos)!;
+    const m = new THREE.Mesh(merged, dormGableMaterial);
+    scene.add(m);
+  }
+  const dormMeshes: [THREE.BufferGeometry[], THREE.MeshLambertMaterial][] = [
+    [dormParts.frame, dormWindowFrameMaterial],
+    [dormParts.glass, dormWindowGlassMaterial],
+    [dormParts.glassLit, dormWindowLitMaterial],
+    [dormParts.balcony, dormBalconyMaterial],
+    [dormParts.door, dormWindowGlassMaterial],
+  ];
+  for (const [list, mat] of dormMeshes) {
+    if (!list.length) continue;
+    const merged = mergeGeometries(list)!;
+    const m = new THREE.Mesh(merged, mat);
     scene.add(m);
   }
   if (unitGeos.length) {

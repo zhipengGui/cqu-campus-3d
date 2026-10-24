@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { WINDOW_GLOW, dormWindowLitMaterial } from "./facades";
+import { skyTexture, skyMeta } from "./skyGradient";
 
 /** 昼/昏/夜三档光照预设。 */
 
@@ -39,13 +41,14 @@ const PRESETS: Record<PresetName, Preset> = {
   },
   night: {
     bg: 0x0d1626, fogNear: 1600, fogFar: 4200,
-    hemiSky: 0x24344d, hemiGround: 0x11151d, hemiInt: 0.42,
-    sunColor: 0x9db8d9, sunInt: 0.4, sunPos: [-700, 800, -500],
+    hemiSky: 0x24344d, hemiGround: 0x11151d, hemiInt: 0.26,
+    sunColor: 0x9db8d9, sunInt: 0.28, sunPos: [-700, 800, -500],
     shadows: false, emissive: 0x0a1424,
   },
 };
 
 let baseEmissive = 0x000000;
+let windowGlowOn = false;
 export function currentBaseEmissive(): number {
   return baseEmissive;
 }
@@ -58,7 +61,11 @@ export function applyBuildingEmissive(root: THREE.Object3D): void {
     const pickRoot = (mesh.userData.pickRoot as THREE.Object3D | undefined) ?? mesh;
     for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
       const mat = material as THREE.MeshStandardMaterial;
-      if (mat.emissive) mat.emissive.setHex(pickRoot.userData.highlightColor ?? baseEmissive);
+      if (mat.emissive) {
+        // 有窗灯贴片的材质在夜景用暖白窗光（选中高亮仍优先），其余维持整楼底光。
+        const glow = windowGlowOn && mat.emissiveMap ? WINDOW_GLOW : baseEmissive;
+        mat.emissive.setHex(pickRoot.userData.highlightColor ?? glow);
+      }
     }
   });
 }
@@ -73,8 +80,11 @@ export class DayNight {
 
   apply(name: PresetName): void {
     const p = PRESETS[name];
-    this.scene.background = new THREE.Color(p.bg);
-    this.scene.fog = new THREE.Fog(p.bg, p.fogNear, p.fogFar);
+    const meta = skyMeta(name);
+    this.scene.background = skyTexture(name);
+    this.scene.environment = skyTexture(name);
+    this.scene.environmentIntensity = meta.envInt;
+    this.scene.fog = new THREE.Fog(new THREE.Color(meta.horizon).getHex(), p.fogNear, p.fogFar);
     this.hemi.color.setHex(p.hemiSky);
     this.hemi.groundColor.setHex(p.hemiGround);
     this.hemi.intensity = p.hemiInt;
@@ -83,6 +93,8 @@ export class DayNight {
     this.sun.position.set(...p.sunPos);
     this.sun.castShadow = p.shadows;
     baseEmissive = p.emissive;
+    windowGlowOn = name === "night";
+    dormWindowLitMaterial.emissive.setHex(windowGlowOn ? WINDOW_GLOW : 0x000000);
     applyBuildingEmissive(this.buildings);
     document.body.classList.toggle("night", name === "night");
   }

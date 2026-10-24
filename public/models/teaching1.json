@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -124.78661795512647,
+      -124.91343904662148,
       -56.585096751676545,
       0.0
     ],
     [
-      124.79499997662684,
-      53.38158787185672,
-      16.34
+      124.85511795472729,
+      53.50852028245062,
+      18.700000000000003
     ]
   ],
-  "triangles": 126200,
-  "bytes": 869912,
+  "triangles": 131408,
+  "bytes": 919120,
   "materials": 8,
   "heightConfidence": "Five storeys officially documented; 3.3m storeys estimated"
 }

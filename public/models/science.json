@@ -1,0 +1,23 @@
+{
+  "asset": "science",
+  "buildingId": -4001,
+  "detail": "near",
+  "courtyards": 1,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -198.16295657703452,
+      -138.95179913074003,
+      0.0
+    ],
+    [
+      198.1535453980237,
+      138.97280406533062,
+      55.67
+    ]
+  ],
+  "triangles": 22556,
+  "bytes": 202380,
+  "materials": 8,
+  "heightConfidence": "47.7m official (2024 建成)；两排楼宇+中央庭院=官网平面图实证，门楼/柱廊/格栅为演绎"
+}

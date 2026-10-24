@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { skyTexture, skyMeta } from "./skyGradient";
 import { boundsOf, frameBox, framePoints, placeRoot } from "./landmarkViews";
 import { clipRoads, campusAreas } from "./campusClip";
 import { buildContext } from "./context";
@@ -18,7 +18,8 @@ import {
   buildWater,
   waterMaterial,
 } from "./sceneBuilder";
-import { buildTrees } from "./trees";
+import { buildTrees, type TreeSystem, type Season } from "./trees";
+import { buildVegetation, type VegetationSystem } from "./vegetation";
 import { cancelFly, flyTo } from "./flyTo";import { LabelLayer } from "./labels";
 import {
   BuildingPicker,
@@ -27,6 +28,7 @@ import {
 import { initSearch, type SearchItem } from "./search";
 import { DayNight, applyBuildingEmissive, type PresetName } from "./dayNight";
 import { buildActivity, buildGate, buildGym, buildLikelou, buildLibrary, buildZonghe, gateLabel } from "./landmarks";
+import { applyStaticI18n, getLang, localName, onLangChange, setLang, t, tr, type Pair } from "./i18n";
 import { buildSportsMarks, sportsSiteAreas } from "./sports";
 import { Navigator } from "./navigation";
 import { collectPlaces, initPlacesPanel, type PlaceEntry, type PlacesPanel } from "./placesPanel";
@@ -36,6 +38,7 @@ import { facadeTexture, roofMaterial } from "./facades";
 import {formatSharedView,parseSharedView,sharedDistanceScale} from './shareView';
 import {advanceFrame} from './frameTiming';
 import {initNavigationPanel} from './navigationPanel';
+let navPanel:{rebuild:()=>void}|null=null;
 import {WalkWorld} from './walkCollision';
 import {Walking} from './walking';
 import walkSpawns from '../data/walk_spawns.json';
@@ -66,15 +69,13 @@ renderer.domElement.tabIndex = 0;
 renderer.domElement.addEventListener("pointerdown", () => renderer.domElement.focus());
 
 const scene = new THREE.Scene();
-const environment = new RoomEnvironment();
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(environment, .04).texture;
-scene.environmentIntensity = .30;
-environment.dispose();
-pmrem.dispose();
+// 程序化天空兼作背景与环境反射（skyGradient，dayNight 切换预设）
+scene.background = skyTexture("day");
+scene.environment = skyTexture("day");
+scene.environmentIntensity = skyMeta("day").envInt;
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 2, 18000);
-const HOME_VIEW = { pos: new THREE.Vector3(650, 620, 1050), target: new THREE.Vector3(0, 10, 0) };
+const HOME_VIEW = { pos: new THREE.Vector3(520, 545, 880), target: new THREE.Vector3(0, 10, 0) };
 camera.position.copy(HOME_VIEW.pos);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -157,7 +158,7 @@ let panel: PlacesPanel | null = null;
 let places: PlaceEntry[] = [];
 let boundaryLine: THREE.LineLoop | null = null;
 let lastBuildingView = "overview";
-let selectedPlace:SearchItem|null=null;
+let selectedPlace:(import("./placesPanel").PlaceEntry)|null=null;
 
 // ---- 图层分组 ----
 const gGreen = new THREE.Group();
@@ -170,8 +171,8 @@ scene.add(gGreen, gSports, gWater, gRoads, gTrees, gContext);
 
 // ---- GLB ----
 const gltfLoader = new GLTFLoader();
-const GLB_LANDMARKS = new Set(["library", "info", "gym", "gongke", "activity", "zonghe", "teaching1", "likelou"]);
-const PRIORITY_ASSETS = new Set(["zonghe", "teaching1", "info", "library", "likelou", "gym", "activity", "gongke"]);
+const GLB_LANDMARKS = new Set(["library", "info", "gym", "gongke", "activity", "zonghe", "teaching1", "likelou", "science"]);
+const PRIORITY_ASSETS = new Set(["zonghe", "teaching1", "info", "library", "likelou", "gym", "activity", "gongke", "science"]);
 const draco = new DRACOLoader().setDecoderPath(import.meta.env.BASE_URL + "draco/");
 gltfLoader.setDRACOLoader(draco);
 const detailAssets: { root: THREE.Group; far: THREE.Group; asset: string; building: Building; near?: THREE.Group; requested: boolean }[] = [];
@@ -206,7 +207,7 @@ async function loadLandmarkGLB(asset: string, b: Building): Promise<THREE.Group 
   if (!GLB_LANDMARKS.has(asset)) return null;
   const priority = PRIORITY_ASSETS.has(asset);
   try {
-    const gltf = await gltfLoader.loadAsync("models/" + asset + (priority ? ".far" : "") + ".glb?v=8");
+    const gltf = await gltfLoader.loadAsync("models/" + asset + (priority ? ".far" : "") + ".glb?v=11");
     const root = new THREE.Group();
     const [cx, cy] = bboxCenterOfBuilding(b);
     root.position.set(cx, 0, -cy); root.name = b.name;
@@ -228,7 +229,7 @@ function updateDetailAssets(): void {
     if (entry.near) { if(entry.near.visible!==close)shadowDirty=true;entry.near.visible = close; entry.far.visible = !close; }
     else if (close && !entry.requested) {
       entry.requested = true;
-      void gltfLoader.loadAsync("models/" + entry.asset + ".glb?v=8").then((gltf) => {
+      void gltfLoader.loadAsync("models/" + entry.asset + ".glb?v=11").then((gltf) => {
         entry.near = gltf.scene; tagAsset(gltf.scene, entry.building, entry.root);
         entry.root.add(gltf.scene);
         shadowDirty=true;
@@ -240,7 +241,7 @@ function updateDetailAssets(): void {
 function loadGateGLB(asset: string, gate: Gate): Promise<THREE.Group | null> {
   return new Promise((resolve) => {
     gltfLoader.load(
-      "models/" + asset + ".glb?v=8",
+      "models/" + asset + ".glb?v=11",
       (gltf) => {
         const g = gltf.scene;
         g.position.set(gate.x, 0, -gate.y);
@@ -292,8 +293,8 @@ function openDetail(it: PlaceEntry): void {
   hud.classList.add("detail-mode");
   document.querySelector("#place-detail")!.classList.add("open");
   (document.querySelector("#pd-num") as HTMLElement)!.textContent = it.num;
-  document.querySelector("#pd-name")!.textContent = it.name;
-  const meta: string[] = [it.kind === "water" ? "湖泊" : it.kind === "gate" ? "校门" : it.kind==='sports'?'运动场地':"建筑"];
+  document.querySelector("#pd-name")!.textContent = localName(it.name);
+  const meta: string[] = [it.kind === "water" ? t("kindWater") : it.kind === "gate" ? t("kindGate") : it.kind==='sports'?t("kindSports"):t("kindBuilding")];
   (document.querySelector('.building-views') as HTMLElement).style.display=it.mesh?'flex':'none';
   if (it.mesh) {
     const d = it.mesh.userData as BuildingUserData;
@@ -302,12 +303,12 @@ function openDetail(it: PlaceEntry): void {
   document.querySelector("#pd-meta")!.textContent = meta.join(" · ");
   const info = PLACE_INFO[it.name];
   document.querySelector("#pd-desc")!.textContent =
-    info?.desc ?? "介绍待补充，欢迎提供资料。";
+    (getLang() === "en" ? info?.descEn : info?.desc) ?? t("descFallback");
   const photo = document.querySelector("#pd-photo") as HTMLElement;
   photo.style.backgroundImage = info?.photo ? `url(${info.photo})` : "none";
   photo.hidden = !info?.photo;
   labels.active = it.name;
-  if (it.mesh) meta.push((it.mesh.userData.heightSource === "override" ? "已校准楼高" : "楼高为推算值"));
+  if (it.mesh) meta.push(it.mesh.userData.heightSource === "override" ? t("heightCalibrated") : t("heightEstimated"));
   document.querySelector("#pd-meta")!.textContent = meta.join(" · ");
   panel?.setActive(it.name);
 }
@@ -369,7 +370,8 @@ function focusPlace(it:SearchItem):void {
 function homeView(): void {
   if (!campusPoints.length) return;
   const width=window.innerWidth,height=window.innerHeight,rect=mapRect();
-  const direction=new THREE.Vector3(.28,1.45,1);
+  // 宿舍统一 6 层后校园垂直占比变大，压低俯角+收紧取景边距让全景宽度保持满框
+  const direction=new THREE.Vector3(.30,1.02,1);
   const fit=framePoints(campusPoints,camera.fov,{width,height},rect,direction);
   camera.setViewOffset(width,height,fit.offset.x,fit.offset.y,width,height);
   flyTo(camera,controls,fit.target,fit.distance,1100,direction);
@@ -439,7 +441,16 @@ async function loadScene(): Promise<void> {
     return fallbackLandmark(b);
   }));
   for (const g of landmarkGroups) buildings.add(g);
-  const treeCount = buildTrees(gTrees, [...campusGreen,...sportsSiteAreas(campusGreen)], data.roads, campusWater, inside, data.boundary?.pts);
+  const manualGreenZones = data.green.filter((g) => g.manual);
+  treeSys = buildTrees(gTrees, [...campusGreen,...sportsSiteAreas(campusGreen)], data.roads, campusWater, data.buildings, data.boundary?.pts, manualGreenZones);
+  vegetation = buildVegetation(gTrees, { green: data.green, roads: data.roads, water: campusWater, buildings: data.buildings });
+  statsVegCount = vegetation.counts.bushes + vegetation.counts.flowers + vegetation.counts.hedges + vegetation.counts.beds;
+  // 环湖专类园标牌（植物园环湖带，随语言切换 relabel）
+  for (const gl of vegetation.gardenLabels) {
+    labels.add(gl.zh, new THREE.Vector3(gl.x, 0, -gl.y), 2600, { cls: "gate", onClick: () => {
+      flyTo(camera, controls, new THREE.Vector3(gl.x, 0, -gl.y), 220);
+    } });
+  }
 
   dayNight = new DayNight(scene, hemi, sun, buildings);
   dayNight.apply("day");
@@ -452,8 +463,8 @@ async function loadScene(): Promise<void> {
     if(message)showToast(message);
     if(!active&&(walkViewport[0]!==innerWidth||walkViewport[1]!==innerHeight)){resize();if(selectedPlace)focusPlace(selectedPlace);else homeView();}
   });
-  routeNavigator.onStatus = (t) => {
-    navStatusEl.textContent = t || (navMode ? "点击道路或地面设置起点" : "");
+  routeNavigator.onStatus = (msg) => {
+    navStatusEl.textContent = msg || (navMode ? t("navStatusDefault") : "");
   };
 
   // 地点收集：有名字的楼（同名取第一个 mesh，递归含 GLB 组）+ 湖 + 校门
@@ -466,11 +477,11 @@ async function loadScene(): Promise<void> {
     if (!byName.has(d.name)) byName.set(d.name, mesh);
   });
   places = collectPlaces({...data, water: campusWater,green:campusGreen}, byName);
-  initNavigationPanel(routeNavigator,places,focusRoute);
+  navPanel = initNavigationPanel(routeNavigator,places,focusRoute,{t,getLang,localName,onLangChange});
   tourStops = TOUR_STOPS.map((s) => places.find((p) => p.name === s.name)).filter(
     (p): p is PlaceEntry => !!p,
   );
-  panel = initPlacesPanel(document.querySelector("#places")!, places, selectPlace);
+  renderPlacesPanel();
   initSearch(
     document.querySelector<HTMLInputElement>("#search")!,
     document.querySelector<HTMLElement>("#suggestions")!,
@@ -527,12 +538,40 @@ async function loadScene(): Promise<void> {
     } });
   }
 
-  statsEl.textContent =
-    `楼栋 ${data.buildings.length} · 树木 ${treeCount}（示意） · ` +
-    `数据 © OpenStreetMap 贡献者`;
-  document.querySelector("#hud-count")!.textContent = `地点 ${places.length} 处`;
-  document.querySelector("#tour-count")!.textContent = `游览 ${tourStops.length} 站`;
+  statsTreeCount = treeSys?.count ?? 0;
+  refreshStatsHud(data.buildings.length, treeSys?.count ?? 0);
 }
+
+function refreshStatsHud(buildingCount: number, treeCountRef?: number): void {
+  const tc = treeCountRef ?? statsTreeCount;
+  if (getLang() === "en") {
+    statsEl.textContent = `Buildings ${buildingCount} · Trees ${tc} · Plantings ${statsVegCount} (illustrative) · Data © OpenStreetMap contributors`;
+    document.querySelector("#hud-count")!.textContent = `${places.length} places`;
+    document.querySelector("#tour-count")!.textContent = `${tourStops.length} stops`;
+  } else {
+    statsEl.textContent = `楼栋 ${buildingCount} · 树木 ${tc} · 花木 ${statsVegCount}（示意） · 数据 © OpenStreetMap 贡献者`;
+    document.querySelector("#hud-count")!.textContent = `地点 ${places.length} 处`;
+    document.querySelector("#tour-count")!.textContent = `游览 ${tourStops.length} 站`;
+  }
+}
+let statsTreeCount = 0;
+let statsVegCount = 0;
+let treeSys: TreeSystem | null = null;
+let vegetation: VegetationSystem | null = null;
+
+// ---- 四季（季相只改植被实例色，与光影预设正交）----
+function applySeason(s: Season): void {
+  treeSys?.applySeason(s);
+  vegetation?.applySeason(s);
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#season-seg .tb")) {
+    b.classList.toggle("on", b.dataset.s === s);
+  }
+}
+document.querySelector("#season-seg")!.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".tb");
+  if (!btn || !btn.dataset.s) return;
+  applySeason(btn.dataset.s as Season);
+});
 
 loadScene().then(() => {
   renderLayers();
@@ -591,16 +630,16 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>(".hud-tab")) {
 }
 
 // ---- 图层 ----
-interface LayerDef { name: string; desc: string; get: () => boolean; set: (v: boolean) => void }
+interface LayerDef { name: Pair; desc: Pair; get: () => boolean; set: (v: boolean) => void }
 const LAYER_DEFS: LayerDef[] = [
-  { name: "地点名称", desc: "在地图上显示地点名称", get: () => labels.enabled, set: (v) => { labels.enabled = v; } },
-  { name: "校园边界", desc: "白色细线标示大致范围", get: () => boundaryLine?.visible ?? false, set: (v) => { if (boundaryLine) boundaryLine.visible = v; } },
-  { name: "校园建筑", desc: "边界内的主要建筑", get: () => buildingsRef?.visible ?? true, set: (v) => { if (buildingsRef) buildingsRef.visible = v; } },
-  { name: "树木", desc: "示意绿荫分布", get: () => gTrees.visible, set: (v) => { gTrees.visible = v; } },
-  { name: "道路与桥梁", desc: "车行道与步行道", get: () => gRoads.visible, set: (v) => { gRoads.visible = v; } },
-  { name: "湖塘水面", desc: "缙湖、云湖等水面", get: () => gWater.visible, set: (v) => { gWater.visible = v; } },
-  { name: "运动场地", desc: "田径跑道与室外球场", get: () => gSports.visible, set: (v) => { gSports.visible = v; } },
-  { name: "周边环境", desc: "校界约200米内的简化建筑、道路与地表", get: () => gContext.visible, set: (v) => { gContext.visible = v; } },
+  { name: { zh: "地点名称", en: "Place labels" }, desc: { zh: "在地图上显示地点名称", en: "Show place names on the map" }, get: () => labels.enabled, set: (v) => { labels.enabled = v; } },
+  { name: { zh: "校园边界", en: "Campus boundary" }, desc: { zh: "白色细线标示大致范围", en: "Thin white outline of the grounds" }, get: () => boundaryLine?.visible ?? false, set: (v) => { if (boundaryLine) boundaryLine.visible = v; } },
+  { name: { zh: "校园建筑", en: "Buildings" }, desc: { zh: "边界内的主要建筑", en: "Main buildings inside the boundary" }, get: () => buildingsRef?.visible ?? true, set: (v) => { if (buildingsRef) buildingsRef.visible = v; } },
+  { name: { zh: "树木", en: "Trees" }, desc: { zh: "树木、绿篱与花境", en: "Trees, hedges & flower beds" }, get: () => gTrees.visible, set: (v) => { gTrees.visible = v; } },
+  { name: { zh: "道路与桥梁", en: "Roads & bridges" }, desc: { zh: "车行道与步行道", en: "Vehicle roads and walkways" }, get: () => gRoads.visible, set: (v) => { gRoads.visible = v; } },
+  { name: { zh: "湖塘水面", en: "Lakes & ponds" }, desc: { zh: "缙湖、云湖等水面", en: "Jin Lake, Cloud Lake and more" }, get: () => gWater.visible, set: (v) => { gWater.visible = v; } },
+  { name: { zh: "运动场地", en: "Sports grounds" }, desc: { zh: "田径跑道与室外球场", en: "Track and outdoor courts" }, get: () => gSports.visible, set: (v) => { gSports.visible = v; } },
+  { name: { zh: "周边环境", en: "Surroundings" }, desc: { zh: "校界约200米内的简化建筑、道路与地表", en: "Simplified buildings and ground near campus" }, get: () => gContext.visible, set: (v) => { gContext.visible = v; } },
 ];
 
 function renderLayers(): void {
@@ -609,10 +648,10 @@ function renderLayers(): void {
   for (const def of LAYER_DEFS) {
     const row = document.createElement("div");
     row.className = "layer-row";
-    const id = "layer-" + def.name;
+    const id = "layer-" + def.name.zh;
     row.innerHTML =
-      `<span class="lt"><strong id="layer-title-${id}">${def.name}</strong>` +
-      `<small id="layer-desc-${id}">${def.desc}</small></span>` +
+      `<span class="lt"><strong id="layer-title-${id}">${tr(def.name)}</strong>` +
+      `<small id="layer-desc-${id}">${tr(def.desc)}</small></span>` +
       `<span class="sw"><input type="checkbox" id="${id}" ${def.get() ? "checked" : ""} /><i></i></span>`;
     (row.querySelector("input") as HTMLInputElement).addEventListener("change", (e) => {
       def.set((e.target as HTMLInputElement).checked);
@@ -655,11 +694,11 @@ document.querySelector("#quality-seg")!.addEventListener("click", (e) => {
 applyQuality();
 
 // ---- 光影 ----
-const LIGHTING_DEFS: { key: PresetName; name: string; sub: string }[] = [
-  { key: "morning", name: "晨光", sub: "树影初长" },
-  { key: "day", name: "日间", sub: "校园清朗" },
-  { key: "dusk", name: "黄昏", sub: "余晖入窗" },
-  { key: "night", name: "夜景", sub: "灯火渐明" },
+const LIGHTING_DEFS: { key: PresetName; name: Pair; sub: Pair }[] = [
+  { key: "morning", name: { zh: "晨光", en: "Morning" }, sub: { zh: "树影初长", en: "Long soft shadows" } },
+  { key: "day", name: { zh: "日间", en: "Day" }, sub: { zh: "校园清朗", en: "Clear daylight" } },
+  { key: "dusk", name: { zh: "黄昏", en: "Dusk" }, sub: { zh: "余晖入窗", en: "Glow at the windows" } },
+  { key: "night", name: { zh: "夜景", en: "Night" }, sub: { zh: "灯火渐明", en: "Lights coming on" } },
 ];
 let currentPreset: PresetName = "day";
 let sunDirection: [number,number,number] = [600,900,350];
@@ -681,7 +720,7 @@ function renderLighting(): void {
     card.type = "button";
     card.dataset.key = def.key;
     card.className = "lt-card" + (def.key === currentPreset ? " on" : "");
-    card.innerHTML = `<strong>${def.name}</strong><small>${def.sub}</small>`;
+    card.innerHTML = `<strong>${tr(def.name)}</strong><small>${tr(def.sub)}</small>`;
     card.addEventListener("click", () => applyLighting(def.key));
     list.appendChild(card);
   }
@@ -695,12 +734,13 @@ let tourStops: PlaceEntry[] = [];
 function tourBarText(): void {
   const it = tourStops[tour.index];
   const stop = it ? TOUR_STOPS.find((s) => s.name === it.name) : undefined;
-  document.querySelector("#tour-state")!.textContent = tour.paused ? "游览已暂停" : "正在游览";
+  document.querySelector("#tour-state")!.textContent = tour.paused ? t("tourPaused") : t("tourState");
   document.querySelector("#tour-pos")!.textContent =
     `${String(tour.index + 1).padStart(2, "0")} / ${tourStops.length}`;
-  document.querySelector("#tour-name")!.textContent = it ? it.name : "";
-  document.querySelector("#tour-desc")!.textContent = stop?.note ?? "";
-  document.querySelector("#tour-pause")!.textContent = tour.paused ? "继续" : "暂停";
+  document.querySelector("#tour-name")!.textContent = it ? localName(it.name) : "";
+  document.querySelector("#tour-desc")!.textContent =
+    (getLang() === "en" ? stop?.noteEn : stop?.note) ?? "";
+  document.querySelector("#tour-pause")!.textContent = tour.paused ? t("tourResume") : t("tourPause");
 }
 
 function tourGoto(index: number): void {
@@ -769,14 +809,14 @@ document.querySelector('#pd-nav')!.addEventListener('click',()=>{
 // ---- 导航 ----
 const navBtn = document.querySelector<HTMLButtonElement>("#tb-nav")!;
 document.querySelector('#tb-walk')!.addEventListener('click',()=>{
-  if(mobileLayout.matches){showToast('步行漫游请使用电脑浏览器与鼠标。');return;}
+  if(mobileLayout.matches){showToast(t('walkDesktopOnly'));return;}
   const setup=document.querySelector<HTMLElement>('#walk-setup')!,select=document.querySelector<HTMLSelectElement>('#walk-spawn')!;
   if(selectedPlace&&[...select.options].some(o=>o.value===selectedPlace!.name))select.value=selectedPlace.name;
   setup.hidden=false;
 });
 document.querySelector('#walk-cancel')!.addEventListener('click',()=>{document.querySelector<HTMLElement>('#walk-setup')!.hidden=true;});
 document.querySelector('#walk-start')!.addEventListener('click',()=>{
-  if(mobileLayout.matches){document.querySelector<HTMLElement>('#walk-setup')!.hidden=true;showToast('步行漫游请使用电脑浏览器与鼠标。');return;}
+  if(mobileLayout.matches){document.querySelector<HTMLElement>('#walk-setup')!.hidden=true;showToast(t('walkDesktopOnly'));return;}
   if(!walking||!walkWorld||!routeNavigator||!sceneData)return;
   const name=document.querySelector<HTMLSelectElement>('#walk-spawn')!.value,place=places.find(p=>p.name===name);if(!place)return;
   const entry=walkSpawns.find(p=>p.name===name);
@@ -873,11 +913,11 @@ document.querySelector("#tl-share")!.addEventListener("click", () => {
   const hash=formatSharedView({position:camera.position.toArray(),target:controls.target.toArray(),
     collapsed:hud.classList.contains('collapsed'),offset:[(camera.view?.offsetX??0)/innerWidth,(camera.view?.offsetY??0)/innerHeight],
     viewport:[innerWidth,innerHeight],frame:[rect.right-rect.left,rect.bottom-rect.top],preset:currentPreset,...(selectedPlace?{place:selectedPlace.name}:{})});
-  const url = location.origin + location.pathname + hash;
+  const url = location.origin + location.pathname + hash + (getLang() === "en" ? (hash.includes("?") ? "&" : "?") + "lang=en" : "");
   history.replaceState(null,'',url);
   (window.navigator.clipboard?.writeText(url)??Promise.reject()).then(
-    () => showToast("链接已复制，可分享当前视角"),
-    () => showToast("复制失败，请手动复制地址栏"),
+    () => showToast(t("toastCopied") + (getLang() === "en" ? " — share this view" : "，可分享当前视角")),
+    () => showToast(getLang() === "en" ? "Copy failed — copy the address bar" : "复制失败，请手动复制地址栏"),
   );
 });
 
@@ -900,13 +940,55 @@ document.querySelector("#tl-export")!.addEventListener("click", () => {
   g.textAlign = "left";
   g.fillText("© OpenStreetMap 贡献者", bar * 0.7, h + bar / 2);
   g.textAlign = "right";
-  g.fillText("重庆大学虎溪校区 3D 地图", w - bar * 0.7, h + bar / 2);
+  g.fillText("重庆大学虎溪校区 3D 地图 · zhipengGui", w - bar * 0.7, h + bar / 2);
   const a = document.createElement("a");
   a.href = canvas.toDataURL("image/png");
   a.download = "huxi-campus-3d.png";
   a.click();
-  showToast("图片已导出");
+  showToast(t("toastExported"));
 });
+
+// ---- 关于面板 ----
+const aboutCard = document.querySelector<HTMLElement>("#about-card")!;
+document.querySelector("#tl-about")!.addEventListener("click", () => {
+  aboutCard.hidden = !aboutCard.hidden;
+});
+document.querySelector("#about-close")!.addEventListener("click", () => {
+  aboutCard.hidden = true;
+});
+
+// ---- 语言切换（中/英） ----
+document.querySelector("#tl-lang")!.addEventListener("click", () => {
+  setLang(getLang() === "zh" ? "en" : "zh");
+});
+onLangChange(() => {
+  navPanel?.rebuild();
+  renderPlacesPanel();
+  renderLayers();
+  renderLighting();
+  labels.relabel(localName);
+  if (selectedPlace) openDetail(selectedPlace);
+  else if (placeDetailOpen()) closeDetailOnly();
+  refreshStatsHud(sceneData?.buildings.length ?? 0);
+  document.querySelectorAll<HTMLSelectElement>("#walk-spawn option").forEach((o) => {
+    o.textContent = localName(o.value);
+  });
+  navStatusEl.textContent = navStatusEl.textContent || "";
+});
+applyStaticI18n();
+
+function placeDetailOpen(): boolean {
+  return document.querySelector("#hud")!.classList.contains("detail-mode");
+}
+function closeDetailOnly(): void {
+  document.querySelector("#hud")!.classList.remove("detail-mode");
+  document.querySelector("#place-detail")!.classList.remove("open");
+}
+
+function renderPlacesPanel(): void {
+  panel = initPlacesPanel(document.querySelector("#places")!, places, selectPlace);
+  if (selectedPlace) panel.setActive(selectedPlace.name);
+}
 
 // ---- 键盘快捷键 ----
 function escapeAll(): void {
@@ -918,8 +1000,8 @@ function escapeAll(): void {
   else closeDetail();
 }
 window.addEventListener("keydown", (e) => {
-  const t = e.target as HTMLElement;
-  if (t.tagName === "INPUT" || t.tagName === "TEXTAREA"||t.tagName==='SELECT') return;
+  const tgt = e.target as HTMLElement;
+  if (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA"||tgt.tagName==='SELECT') return;
   if(walking?.active){if(e.key==='Escape')walking.exit();return;}
   const k = e.key.toLowerCase();
   if (k === "h") document.querySelector<HTMLButtonElement>("#tl-home")!.click();
@@ -928,8 +1010,12 @@ window.addEventListener("keydown", (e) => {
   else if (k === "2") applyLighting("day");
   else if (k === "3") applyLighting("dusk");
   else if (k === "4") applyLighting("night");
+  else if (k === "5") applySeason("spring");
+  else if (k === "6") applySeason("summer");
+  else if (k === "7") applySeason("autumn");
+  else if (k === "8") applySeason("winter");
   else if (e.key === "Escape") escapeAll();
-  else if (k === "?") showToast("快捷键：方向键旋转 · H全景 · N正北 · 1-4光影 · Esc退出");
+  else if (k === "?") showToast(t("keysHelp"));
 });
 
 // ---- 渲染循环（60fps 帽）----
@@ -963,12 +1049,13 @@ renderer.setAnimationLoop((t) => {
     lastShadowTarget.copy(controls.target);lastShadowSize=shadowSize;shadowDirty=false;
   }
   labels.update(camera, controls.target);
+  treeSys?.updateLod(camera.position);
   renderer.render(scene, camera);
   labels.render(scene, camera);
 });
 
 // 调试入口（控制台用）
-Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;} } });
+Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get vegetation(){return vegetation;},get treeSys(){return treeSys;} } });
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-building-view]")) {
   button.addEventListener("click", () => focusBuilding(flyTargetBuilding, button.dataset.buildingView));

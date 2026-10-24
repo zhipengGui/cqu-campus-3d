@@ -8,7 +8,7 @@
     [
       -48.699999940972276,
       -46.5,
-      0.0
+      -0.22000000000000003
     ],
     [
       48.699999956642976,
@@ -16,8 +16,8 @@
       66.7
     ]
   ],
-  "triangles": 13646,
-  "bytes": 86092,
-  "materials": 6,
+  "triangles": 13766,
+  "bytes": 88628,
+  "materials": 7,
   "heightConfidence": "Official overall height; podium, fin spacing and wall placement estimated from photos"
 }

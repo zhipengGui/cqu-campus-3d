@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { BuildingUserData } from "./interact";
+import { getLang, localName } from "./i18n";
 
 /** 搜索：楼名/湖名子串匹配，回车选第一条。 */
 
@@ -32,8 +33,9 @@ export function initSearch(
       btn.type = "button";
       btn.className = "suggestion";
       const tag=document.createElement('span');tag.className='tag';
-      tag.textContent=it.kind==='water'?'湖':it.kind==='gate'?'门':it.kind==='sports'?'场':'楼';
-      btn.append(tag,document.createTextNode(it.name));
+      const en=getLang()==='en';
+      tag.textContent=it.kind==='water'?(en?'Lake':'湖'):it.kind==='gate'?(en?'Gate':'门'):it.kind==='sports'?(en?'Field':'场'):(en?'Bldg':'楼');
+      btn.append(tag,document.createTextNode(localName(it.name)));
       btn.addEventListener("pointerdown", (e) => e.preventDefault()); // 防止输入框失焦抢点击
       btn.addEventListener("click", () => {
         hide();
@@ -52,7 +54,8 @@ export function initSearch(
       hide();
       return;
     }
-    const matched = items.filter((it) => it.name.includes(q));
+    const lq = q.toLowerCase();
+    const matched = items.filter((it) => it.name.includes(q) || localName(it.name).toLowerCase().includes(lq));
     matched.sort((a, b) => {
       const sa = a.name.startsWith(q) ? 0 : 1;
       const sb = b.name.startsWith(q) ? 0 : 1;
