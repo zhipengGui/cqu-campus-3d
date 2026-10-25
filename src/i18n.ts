@@ -145,7 +145,6 @@ const NAMES: Record<string, string> = {
   工科大楼: "Engineering Bldg",
   虎溪科学中心: "Science Center",
   储能技术产教融合创新大楼: "Energy-Storage Bldg",
-  重庆海吉亚肿瘤医院: "Haijiya Hospital",
   艺术楼: "Art Bldg",
   校医院: "Campus Clinic",
   药学院: "Pharmacy School",
@@ -174,6 +173,9 @@ const NAMES: Record<string, string> = {
   蕨类园: "Fern Garden",
   松林公园: "Pine Forest Park",
   含笑漫步道: "Michelia Walk",
+  重庆海吉亚肿瘤医院: "Chongqing Haijia Oncology Hospital",
+  医院门诊楼: "Hospital Outpatient Bldg",
+  药学院研究中心: "Pharmacy Research Center",
   田径场: "Track & Field",
   室外球场区: "Outdoor Courts",
 };

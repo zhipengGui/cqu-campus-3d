@@ -1,0 +1,23 @@
+{
+  "asset": "lab3",
+  "buildingId": 1060224244,
+  "detail": "near",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -52.03885511126817,
+      -23.993746961848124,
+      0.0
+    ],
+    [
+      52.03888118142874,
+      23.993937314623224,
+      13.040000000000001
+    ]
+  ],
+  "triangles": 23384,
+  "bytes": 178784,
+  "materials": 5,
+  "heightConfidence": "OSM default"
+}

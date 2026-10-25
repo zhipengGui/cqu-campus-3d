@@ -102,4 +102,36 @@ export const PLACE_INFO: Record<string, PlaceInfo> = {
     descEn: 'A small pond northeast of the Library, featured in the official campus gallery. Surrounding planting is illustrative.',
     photo: 'photos/lianchi.jpg',
   },
+  重庆海吉亚肿瘤医院: {
+    desc: '校园南侧的肿瘤专科医院主楼。蓝玻璃横带幕墙与白色楼板框依实拍照片复原；层数、横带分格与屋顶设备为估算。',
+    descEn: 'The oncology hospital tower south of campus. Blue banded curtain wall and white spandrels follow user photos; storey count, band rhythm and roof plant are estimated.',
+  },
+  医院门诊楼: {
+    desc: '医院门诊楼，白色体量与通长玻璃带依实拍照片复原；与主楼间的连廊位置为推测。',
+    descEn: 'The hospital outpatient building; white volume and full-length glass band follow photos; the link bridge position is estimated.',
+  },
+  第二实验楼: {
+    desc: '教学区三层实验楼。白框平顶为通用实验楼形制（卫星证据不足，造型以推测为主）。',
+    descEn: 'A three-storey lab building in the teaching quarter. The white-frame flat-roof idiom is generic (weak satellite evidence; design largely inferred).',
+  },
+  第三实验楼: {
+    desc: '北区四层实验楼，红橙平顶暖色系依卫星影像复原；门窗节奏为估算。',
+    descEn: 'A four-storey lab building in the north quarter; the orange flat-roof tone follows satellite imagery, window rhythm estimated.',
+  },
+  药学院: {
+    desc: '教学区三层楼，红橙平顶暖色系依卫星影像复原；入口位置为推测。',
+    descEn: 'A three-storey building with an orange flat roof from satellite imagery; entrance position estimated.',
+  },
+  药学院研究中心: {
+    desc: '药学院研究楼，红橙平顶暖色系依卫星影像复原。',
+    descEn: 'Pharmacy research block with an orange flat roof from satellite imagery.',
+  },
+  工程培训中心: {
+    desc: '西区大跨两层厂房式工训中心。深檐带与山墙大玻璃门为推测（卫星屋面证据中等，平顶形态按厂房形制）。',
+    descEn: 'A large two-storey workshop-style training centre in the west. Deep eaves and gable glazing are inferred (moderate satellite roof evidence).',
+  },
+  校医院: {
+    desc: '北区校园诊所长楼。暖色平顶与底层柱廊为推测（卫星证据中等）。',
+    descEn: 'The long campus clinic in the north. Warm flat roof and ground-floor colonnade are inferred (moderate satellite evidence).',
+  },
 };

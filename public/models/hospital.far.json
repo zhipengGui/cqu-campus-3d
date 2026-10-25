@@ -1,0 +1,23 @@
+{
+  "asset": "hospital",
+  "buildingId": -4002,
+  "detail": "far",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -26.85,
+      -57.449999999999996,
+      0.0
+    ],
+    [
+      26.85,
+      52.85,
+      49.8
+    ]
+  ],
+  "triangles": 420,
+  "bytes": 10436,
+  "materials": 5,
+  "heightConfidence": "manual 48m (satellite footprint + storey estimate); storeys estimated from photos"
+}

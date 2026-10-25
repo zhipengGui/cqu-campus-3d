@@ -1,0 +1,23 @@
+{
+  "asset": "gongpei",
+  "buildingId": 774933712,
+  "detail": "near",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -49.01333224330683,
+      -51.8227270049736,
+      0.0
+    ],
+    [
+      49.01298026373421,
+      51.822551795033164,
+      14.1
+    ]
+  ],
+  "triangles": 17438,
+  "bytes": 145016,
+  "materials": 6,
+  "heightConfidence": "OSM 16.5 overridden: 2-storey workshop idiom; pitch per z19 row variance"
+}

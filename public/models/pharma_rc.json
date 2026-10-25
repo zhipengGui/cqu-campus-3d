@@ -1,0 +1,23 @@
+{
+  "asset": "pharma_rc",
+  "buildingId": 774933750,
+  "detail": "near",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -35.18811539752163,
+      -18.173200254854265,
+      0.0
+    ],
+    [
+      35.188531328553886,
+      18.17344169693675,
+      9.740000000000002
+    ]
+  ],
+  "triangles": 13086,
+  "bytes": 102452,
+  "materials": 5,
+  "heightConfidence": "OSM default"
+}

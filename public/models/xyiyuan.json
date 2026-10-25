@@ -1,0 +1,23 @@
+{
+  "asset": "xyiyuan",
+  "buildingId": 1060224245,
+  "detail": "near",
+  "courtyards": 0,
+  "roofCourtyardsOpen": true,
+  "bounds": [
+    [
+      -73.54125674592524,
+      -14.701241159801613,
+      -0.09999999999999964
+    ],
+    [
+      73.5415772861927,
+      14.701420643766482,
+      10.840000000000002
+    ]
+  ],
+  "triangles": 19926,
+  "bytes": 144360,
+  "materials": 6,
+  "heightConfidence": "OSM 13.2 overridden: clinic idiom 3 storeys; row variance ambiguous"
+}
