@@ -37,7 +37,7 @@ function polylineLen(pts: Pt[]): number {
 
 export function buildTraffic(
   parent: THREE.Object3D,
-  opts: { roads: Road[]; lakeOutline: Pt[] | null },
+  opts: { roads: Road[]; lakeOutline: Pt[] | null; hotspots?: { x: number; y: number; r: number; hw: number; hd: number }[] },
 ): TrafficSystem {
   const rng = mulberry32(20261025);
   const group = new THREE.Group();
@@ -54,16 +54,51 @@ export function buildTraffic(
     }
     return false;
   };
+  // 人流热点：教学区/图书馆/综合楼/食堂周边按"圈内长度占比"加权投放
+  const segHotLen = (a: Pt, b: Pt): number => {
+    let hot = 0;
+    const seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const steps = Math.max(1, Math.ceil(seg / 12));
+    for (let i = 0; i <= steps; i++) {
+      const t = (i / steps) * seg;
+      const x = a[0] + (b[0] - a[0]) * (seg ? t / seg : 0);
+      const y = a[1] + (b[1] - a[1]) * (seg ? t / seg : 0);
+      for (const h of opts.hotspots ?? []) {
+        if (Math.hypot(x - h.x, y - h.y) < h.r) { hot += seg / steps; break; }
+      }
+    }
+    return hot;
+  };
 
-  // ---- 行人路径：步道（环湖加权）----
+  // ---- 行人路径：步道（环湖与热点加权）----
   const walkPaths: WalkerPath[] = [];
   for (const r of opts.roads) {
     if (!WALK_KINDS.has(r.kind) || r.pts.length < 2) continue;
     const len = polylineLen(r.pts);
     if (len < 30) continue;
     const lake = r.pts.some((p) => nearLake(p[0], p[1]));
-    walkPaths.push({ pts: r.pts, len, lake });
-    if (lake) walkPaths.push({ pts: r.pts, len, lake }); // 环湖人行带双倍权重
+    let hotLen = 0;
+    for (let i = 0; i < r.pts.length - 1; i++) hotLen += segHotLen(r.pts[i], r.pts[i + 1]);
+    const copies = 1 + (lake ? 1 : 0) + Math.min(9, Math.round((hotLen / len) * 9));
+    for (let c = 0; c < copies; c++) walkPaths.push({ pts: r.pts, len, lake });
+  }
+  // 热点周边的车行路也上人（食堂/教学楼前路面，如上下课人流）
+  for (const r of opts.roads) {
+    if (!DRIVE_KINDS.has(r.kind) || r.pts.length < 2) continue;
+    const len = polylineLen(r.pts);
+    if (len < 40) continue;
+    let hotLen = 0;
+    for (let i = 0; i < r.pts.length - 1; i++) hotLen += segHotLen(r.pts[i], r.pts[i + 1]);
+    if (hotLen < len * 0.3) continue; // 只有主要在热点内的车行路才人行化
+    const copies = 1 + Math.min(6, Math.round((hotLen / len) * 7));
+    for (let c = 0; c < copies; c++) walkPaths.push({ pts: r.pts, len, lake: false });
+  }
+  // 热点环楼步道：楼外围 9m 绕楼一圈（楼前广场人流形态，不依赖 OSM 路网密度）
+  for (const h of opts.hotspots ?? []) {
+    const x0 = h.x - h.hw - 9, x1 = h.x + h.hw + 9, y0 = h.y - h.hd - 9, y1 = h.y + h.hd + 9;
+    const ring: Pt[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+    const len = polylineLen(ring);
+    for (let c = 0; c < 10; c++) walkPaths.push({ pts: ring, len, lake: false });
   }
   // ---- 车行路径：校内车行路（较长者为骨架）----
   const drivePaths: VehiclePath[] = [];
@@ -86,9 +121,9 @@ export function buildTraffic(
   const walkerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
   const WALKER_COLORS = [0xb23c3c, 0x3c62b2, 0x3c8a55, 0xd0a13c, 0x7a5aa8, 0x9c9c9c, 0xc4703c];
 
-  const WALKER_TOTAL = 320;
+  const WALKER_TOTAL = 480;
   const walkers = new THREE.InstancedMesh(walkerGeo, walkerMat, WALKER_TOTAL);
-  interface WalkerState { path: WalkerPath; t: number; dir: 1 | -1; speed: number; color: number; bob: number }
+  interface WalkerState { path: WalkerPath; t: number; dir: 1 | -1; speed: number; color: number; bob: number; side: number }
   const walkerStates: WalkerState[] = [];
   for (let i = 0; i < WALKER_TOTAL; i++) {
     const pool = walkPaths.length ? walkPaths : drivePaths;
@@ -96,6 +131,7 @@ export function buildTraffic(
     walkerStates.push({
       path: path as WalkerPath, t: rng(), dir: rng() < 0.5 ? 1 : -1,
       speed: 0.9 + rng() * 0.6, color: WALKER_COLORS[Math.floor(rng() * WALKER_COLORS.length)], bob: rng() * 10,
+      side: (rng() - 0.5) * 2.6, // 横向散布，避免单列行进
     });
     walkers.setColorAt(i, new THREE.Color(walkerStates[i].color));
   }
@@ -123,12 +159,12 @@ export function buildTraffic(
   const cartMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.1 });
   const CART_TOTAL = 24;
   const carts = new THREE.InstancedMesh(cartGeo, cartMat, CART_TOTAL);
-  interface VehicleState { path: VehiclePath; t: number; dir: 1 | -1; speed: number; tint: number }
+  interface VehicleState { path: VehiclePath; t: number; dir: 1 | -1; speed: number; tint: number; side: number }
   const cartStates: VehicleState[] = [];
   const cartPool = lakeDrive.length ? [...lakeDrive, ...lakeDrive, ...drivePaths] : drivePaths;
   for (let i = 0; i < CART_TOTAL; i++) {
     const path = cartPool[Math.floor(rng() * cartPool.length)];
-    cartStates.push({ path, t: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 4.2 + rng() * 1.2, tint: rng() < 0.82 ? 0xf7f7f4 : 0xe8e2d4 });
+    cartStates.push({ path, t: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 4.2 + rng() * 1.2, tint: rng() < 0.82 ? 0xf7f7f4 : 0xe8e2d4, side: 0 });
     carts.setColorAt(i, new THREE.Color(cartStates[i].tint));
   }
   carts.castShadow = false;
@@ -155,7 +191,7 @@ export function buildTraffic(
   const coachPool = drivePaths.filter((p) => p.len > 260);
   for (let i = 0; i < COACH_TOTAL && coachPool.length; i++) {
     const path = coachPool[Math.floor(rng() * coachPool.length)];
-    coachStates.push({ path, t: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 6.5, tint: 0xf2f4f6 });
+    coachStates.push({ path, t: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 6.5, tint: 0xf2f4f6, side: 0 });
     coaches.setColorAt(i, new THREE.Color(coachStates[i].tint));
   }
   coaches.castShadow = false;
@@ -187,18 +223,22 @@ export function buildTraffic(
   const s = new THREE.Vector3(1, 1, 1);
   const fwd = new THREE.Vector3();
 
-  function place(mesh: THREE.InstancedMesh, states: VehicleState[] | (WalkerState & { speed: number })[], dt: number, isWalker: boolean): void {
+  function place(mesh: THREE.InstancedMesh, states: { path: { pts: Pt[]; len: number }; t: number; dir: 1 | -1; speed: number; bob?: number; side: number }[], dt: number, isWalker: boolean): void {
     let n = 0;
-    for (const st of states as { path: { pts: Pt[]; len: number }; t: number; dir: 1 | -1; speed: number; bob?: number }[]) {
+    for (const st of states) {
       if (n >= mesh.count) break;
       st.t += (st.speed * dt) / st.path.len;
       if (st.t > 1) st.t -= 1;
       const [x, y] = at(st.path.pts, st.path.len, st.t * st.path.len, st.dir, fwd);
       if (st.dir === -1) fwd.negate(); // 逆行时朝向反转
+      // 横向偏移：行人随机散布；车辆靠右行驶（dir*1.1m）
+      const side = isWalker ? st.side : st.dir * 1.1;
+      const px = x - fwd.z * side;
+      const py = y + fwd.x * side;
       const yaw = Math.atan2(fwd.x, fwd.z);
       e.set(0, yaw, 0); q.setFromEuler(e);
       const bob = isWalker && st.bob !== undefined ? Math.abs(Math.sin(st.t * st.path.len * 1.6 + st.bob)) * 0.045 : 0;
-      v.set(x, bob, -y);
+      v.set(px, bob, -py);
       m.compose(v, q, s);
       mesh.setMatrixAt(n, m);
       n++;

@@ -473,7 +473,15 @@ async function loadScene(): Promise<void> {
   treeSys = buildTrees(gTrees, [...campusGreen,...sportsSiteAreas(campusGreen)], data.roads, campusWater, data.buildings, data.boundary?.pts, manualGreenZones);
   vegetation = buildVegetation(gTrees, { green: data.green, roads: data.roads, water: campusWater, buildings: data.buildings });
   const jinOutline = campusWater.find((w) => w.name === "缙湖")?.outers[0] ?? null;
-  traffic = buildTraffic(gTraffic, { roads: data.roads, lakeOutline: jinOutline });
+  // 人流热点：一教/图书馆/综合楼/一食/二食周边（上下课+就餐人流）
+  const HOTSPOT_NAMES = new Set(["第一教学楼", "图书馆", "综合楼", "第一食堂", "第二食堂"]);
+  const hotspots = data.buildings.filter((b) => b.inside && HOTSPOT_NAMES.has(b.name)).map((b) => {
+    const xs = b.polygon.map((p) => p[0]);
+    const ys = b.polygon.map((p) => p[1]);
+    return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, r: 95,
+      hw: (Math.max(...xs) - Math.min(...xs)) / 2, hd: (Math.max(...ys) - Math.min(...ys)) / 2 };
+  });
+  traffic = buildTraffic(gTraffic, { roads: data.roads, lakeOutline: jinOutline, hotspots });
   walkBuildings = data.buildings.filter((b) => b.inside && b.name && !b.name.includes("门"));
   statsVegCount = vegetation.counts.bushes + vegetation.counts.flowers + vegetation.counts.hedges + vegetation.counts.beds;
   // 环湖专类园标牌（植物园环湖带，随语言切换 relabel）
