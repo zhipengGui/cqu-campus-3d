@@ -69,7 +69,8 @@ npm run build
 ## 致谢与许可
 
 - 项目的视觉表现与实现参考了 [gxu-campus-3d](https://github.com/wcqqq1214/gxu-campus-3d)。
-- 代码采用 [MIT License](LICENSE)。
+- 本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利：仅供学习与浏览，未经作者许可请勿复制、修改或再发布；如需使用请通过 [Issues](https://github.com/zhipengGui/cqu-huxi-campus-3d/issues) 联系作者。
+- All rights reserved © 2026 ZhipengGui. Code and models are provided for viewing and learning only; do not copy, modify or redistribute without the author's permission — open an issue to ask.
 - 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，遵循 ODbL。
 - 参考照片来自重庆大学公开图集，照片权利属于原权利人。
 - Draco 解码器采用 Apache License 2.0，详见 [public/draco](public/draco/)。
