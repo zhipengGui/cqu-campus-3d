@@ -75,6 +75,8 @@ export const D: Record<string, Pair> = {
   flyExit: { zh: "退出", en: "Exit" },
   flyEdge: { zh: "已到地图边缘", en: "Edge of the map" },
   flyRotateHint: { zh: "建议横屏使用自由视角", en: "Landscape is recommended for free flight" },
+  flyEntered: { zh: "已进入自由视角 · WASD 移动 · 滚轮调速", en: "Free flight on · WASD to move · scroll to change speed" },
+  walkEntered: { zh: "已进入步行漫游 · WASD 移动", en: "Walking on · WASD to move" },
   onboardReplay: { zh: "重新查看功能导览", en: "Replay the feature tour" },
   onboardNext: { zh: "下一步", en: "Next" },
   onboardPrev: { zh: "上一步", en: "Back" },

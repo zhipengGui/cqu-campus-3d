@@ -1,12 +1,12 @@
 import * as THREE from "three";
-import {PointerLockControls} from "three/examples/jsm/controls/PointerLockControls.js";
 import type {OrbitControls} from "three/examples/jsm/controls/OrbitControls.js";
 import type {FlyWorld} from "./walkCollision";
 import type {RoadPoint} from "./routing";
+import {SharedPointerLock, type LockOwner} from "./pointerLock";
 
-/** 自由视角（FreeCam）：WASD 平移 + Space 上升 / C 下降（Ctrl 备选，避开 Ctrl+W 关标签）
+/** 自由视角（FreeCam）：第一人称的"飞行预设"——WASD 平移 + Space/C 升降
  *  + Shift 加速 + 滚轮调速。带建筑高度碰撞（可飞越楼顶）与模型范围边界。
- *  与 Walking 同构：PointerLock + 相机快照还原。 */
+ *  指针锁定走共享 SharedPointerLock（owner 制）。 */
 
 const EDGE = { x0: -1515, x1: 1604, y0: -1352, y1: 1659 }; // 模型范围（含熙街/医院/周边）
 const Y_MIN = 2, Y_MAX = 500;
@@ -17,60 +17,52 @@ export interface FreeCamEvents {
   onExit?(message?: string): void;
 }
 
-export class FreeCam {
+export class FreeCam implements LockOwner {
   active=false;
+  lockDegraded=false;
   speed=30; // m/s
-  readonly pointer:PointerLockControls;
   private keys=new Set<string>();
   private camera:THREE.PerspectiveCamera;
   private orbit:OrbitControls;
   private world:FlyWorld;
+  private lock:SharedPointerLock;
   private events:FreeCamEvents;
-  private attempt=0;
   private snapshot:{position:THREE.Vector3;quaternion:THREE.Quaternion;target:THREE.Vector3;fov:number;view:THREE.PerspectiveCamera['view']}|null=null;
   private edgeToastAt=0;
   /** 移动端注入：摇杆归一化向量（屏幕系：x 右 / y 上）与升降开关 */
   mobileInput:{x:number;y:number;up:boolean;down:boolean}={x:0,y:0,up:false,down:false};
 
-  constructor(camera:THREE.PerspectiveCamera,orbit:OrbitControls,canvas:HTMLElement,world:FlyWorld,events:FreeCamEvents={}) {
-    this.camera=camera;this.orbit=orbit;this.world=world;this.events=events;
-    this.pointer=new PointerLockControls(camera,canvas);
-    this.pointer.minPolarAngle=.02;this.pointer.maxPolarAngle=Math.PI-.02;
-    this.pointer.addEventListener('lock',()=>{if(!this.active)this.pointer.unlock();});
-    this.pointer.addEventListener('unlock',()=>{if(this.active&&!this.lockFailed)this.exit();});
-    canvas.ownerDocument.addEventListener('pointerlockerror',()=>{if(this.active)this.lockFailed=true;});
+  constructor(camera:THREE.PerspectiveCamera,orbit:OrbitControls,world:FlyWorld,lock:SharedPointerLock,events:FreeCamEvents={}) {
+    this.camera=camera;this.orbit=orbit;this.world=world;this.lock=lock;this.events=events;
     document.addEventListener('keydown',e=>{
       if(!this.active)return;
       if(['KeyW','KeyA','KeyS','KeyD','Space','KeyC','ControlLeft','ControlRight','ShiftLeft','ShiftRight'].includes(e.code)){
-        if(e.code==='Space')e.preventDefault(); // 防页面滚动
+        if(e.code==='Space')e.preventDefault(); // 防页面滚动/回触按钮
         this.keys.add(e.code);e.preventDefault();
       }
     });
     document.addEventListener('keyup',e=>this.keys.delete(e.code));
   }
 
+  lockGranted():void {/* enter 已假定成功路径 */}
+  lockLost():void { if(this.active) this.exit(); }  // 用户按 Esc 解锁 = 退出飞行
+  lockFailed():void { this.lockDegraded=true; }       // 降级：拖动视角（main 已兜底）
+
   enter():boolean {
     if(this.active)return false;
     const c=this.camera,o=this.orbit;
     this.snapshot={position:c.position.clone(),quaternion:c.quaternion.clone(),target:o.target.clone(),fov:c.fov,view:c.view?{...c.view}:null};
     const damping=o.enableDamping;o.enableDamping=false;o.update();o.enableDamping=damping;o.enabled=false;
-    this.active=true;this.keys.clear();c.clearViewOffset();
-    const attempt=++this.attempt;
-    // Pointer Lock 失败不视为致命（无头/部分环境不支持）：保持自由视角，
-    // 视角改由拖动控制（dragToLook 模式，由 main 的 touch/pointer 处理兜底）
-    try{
-      const request=this.pointer.domElement!.requestPointerLock() as Promise<void>|undefined;
-      request?.catch(()=>{if(this.attempt===attempt)this.lockFailed=true;});
-    }catch{this.lockFailed=true;}
+    this.active=true;this.lockDegraded=false;this.keys.clear();c.clearViewOffset();
+    this.lock.request(this);
     return true;
   }
-  lockFailed=false;
 
   exit(message?:string):void {
     if(!this.active||!this.snapshot)return;
-    this.active=false;this.attempt++;this.keys.clear();
+    this.active=false;this.keys.clear();
     this.mobileInput={x:0,y:0,up:false,down:false};
-    if(this.pointer.isLocked)this.pointer.unlock();
+    this.lock.release(this);
     const s=this.snapshot;this.snapshot=null;
     const c=this.camera;
     c.position.copy(s.position);c.quaternion.copy(s.quaternion);this.orbit.target.copy(s.target);

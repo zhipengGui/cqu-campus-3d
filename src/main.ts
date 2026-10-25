@@ -24,6 +24,7 @@ import { streamLandmarkGLBs } from "./landmarkStream";
 import { buildTraffic, type TrafficSystem, type TrafficControls } from "./traffic";
 import { buildTourRoutes, type TourRoute } from "./tourRoutes";
 import { FreeCam } from "./freecam";
+import { SharedPointerLock } from "./pointerLock";
 import { initOnboarding } from "./onboarding";
 import { cancelFly, flyTo, flyAlong } from "./flyTo";import { LabelLayer } from "./labels";
 import {
@@ -56,6 +57,7 @@ const hud=document.querySelector<HTMLElement>('#hud')!;
 let walking:Walking|null=null;
 let walkWorld:WalkWorld|null=null;
 let freeCam:FreeCam|null=null;
+let sharedLock:SharedPointerLock;
 let dragLook:{x:number;y:number;id:number}|null=null;
 
 // ---- 自由视角 ----
@@ -71,6 +73,7 @@ function enterFreeCam():void{
     document.body.classList.add('freecam-mode');
     picker?.setEnabled(false);
     document.querySelector('#freecam-speed')!.textContent=`${Math.round(freeCam.speed)} m/s`;
+    showToast(t("flyEntered"));
     if(matchMedia('(pointer: coarse)').matches){
       document.body.classList.add('freecam-touch');
       if(matchMedia('(orientation: portrait)').matches)showToast(t("flyRotateHint"));
@@ -527,21 +530,23 @@ async function loadScene(): Promise<void> {
 
   routeNavigator = new Navigator(scene, data.graph);
   walkWorld=new WalkWorld(data);
-  walking=new Walking(camera,controls,renderer.domElement,walkWorld,(active,message)=>{
+  sharedLock=new SharedPointerLock(camera,renderer.domElement);
+  walking=new Walking(camera,controls,walkWorld,sharedLock,(active,message)=>{
     walkRouteState=null;
     document.body.classList.toggle('walk-mode',active);picker?.setEnabled(!active);shadowDirty=true;
     document.querySelector<HTMLElement>('#walk-setup')!.hidden=true;
     if(message)showToast(message);
+    else if(active)showToast(t("walkEntered"));
     if(!active&&(walkViewport[0]!==innerWidth||walkViewport[1]!==innerHeight)){resize();if(selectedPlace)focusPlace(selectedPlace);else homeView();}
   });
-  freeCam=new FreeCam(camera,controls,renderer.domElement,walkWorld,{
+  freeCam=new FreeCam(camera,controls,walkWorld,sharedLock,{
     onSpeed:(s)=>{document.querySelector('#freecam-speed')!.textContent=`${Math.round(s)} m/s`;},
     onEdge:()=>showToast(t("flyEdge")),
     onExit:(msg)=>{document.body.classList.remove('freecam-mode');picker?.setEnabled(true);shadowDirty=true;if(msg)showToast(msg);},
   });
   // Pointer Lock 失败降级：按住拖动旋转视角（同触屏逻辑）
   renderer.domElement.addEventListener('pointerdown',(e)=>{
-    if(!freeCam?.active||freeCam.pointer.isLocked||e.pointerType==='touch')return;
+    if(!freeCam?.active||sharedLock.isLocked||e.pointerType==='touch')return;
     dragLook={x:e.clientX,y:e.clientY,id:e.pointerId};
   });
   renderer.domElement.addEventListener('pointermove',(e)=>{
@@ -1330,7 +1335,7 @@ function escapeAll(): void {
 window.addEventListener("keydown", (e) => {
   const tgt = e.target as HTMLElement;
   if (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA"||tgt.tagName==='SELECT') return;
-  if(walking?.active){if(e.key==='Escape')walking.exit();return;}
+  if(walking?.active){if(e.key==='Escape')walking.exit();else if(e.key.toLowerCase()==='v')enterFreeCam();return;}
   const k = e.key.toLowerCase();
   if (k === "h") document.querySelector<HTMLButtonElement>("#tl-home")!.click();
   else if (k === "v") enterFreeCam();
