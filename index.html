@@ -167,6 +167,34 @@
     #flag-issue { background:#2d7d52; color:white; border:0; border-radius:7px; padding:9px 14px; cursor:pointer; }
     body.flag-mode #app canvas { cursor:crosshair; }
     #tl-flag.on { border-color:#2d7d52; color:#2d7d52; }
+    #tl-fly.on { border-color:#2d7d52; color:#2d7d52; }
+    #freecam-hud { display:none; position:fixed; z-index:26; bottom:22px; left:50%; transform:translateX(-50%); background:var(--panel-bg); color:var(--text); border-radius:10px; padding:10px 18px; box-shadow:0 2px 16px #0003; font-size:13px; text-align:center; }
+    body.freecam-mode #freecam-hud { display:block; }
+    body.freecam-mode #hud, body.freecam-mode #tools, body.freecam-mode #nav-panel, body.freecam-mode #tour-bar { display:none!important; }
+    body.freecam-mode .map-label { visibility:hidden; }
+    #freecam-hud .keys { color:var(--muted); }
+    #freecam-speed { color:#2d7d52; font-weight:600; }
+    #freecam-exit { margin-left:12px; }
+    #fly-stick { display:none; position:fixed; z-index:27; left:26px; bottom:56px; width:108px; height:108px; border-radius:50%; background:rgba(127,127,127,.14); border:1px solid var(--line); touch-action:none; }
+    body.freecam-touch #fly-stick { display:block; }
+    #fly-knob { position:absolute; left:50%; top:50%; width:46px; height:46px; margin:-23px 0 0 -23px; border-radius:50%; background:rgba(255,255,255,.55); border:1px solid #fff8; box-shadow:0 2px 10px #0004; }
+    #fly-up,#fly-down { display:none; position:fixed; z-index:27; right:26px; width:56px; height:56px; border-radius:50%; background:rgba(127,127,127,.18); border:1px solid var(--line); color:var(--text); font-size:20px; touch-action:none; }
+    body.freecam-touch #fly-up, body.freecam-touch #fly-down { display:block; }
+    #fly-up { bottom:126px; } #fly-down { bottom:56px; }
+    #onboard { position:fixed; inset:0; z-index:40; }
+    #onboard[hidden] { display:none; }
+    #onboard .onboard-mask { position:absolute; inset:0; background:rgba(8,16,24,.55); backdrop-filter:blur(2px); }
+    #onboard .onboard-card { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(460px,calc(100vw - 32px)); box-sizing:border-box; padding:26px; background:var(--panel-bg); color:var(--text); border-radius:14px; box-shadow:0 8px 50px #142d3650; text-align:center; }
+    #onboard .onboard-icon { font-size:44px; line-height:1; margin-bottom:10px; }
+    #onboard h2 { font-size:19px; margin:0 0 8px; }
+    #onboard p { font-size:14px; line-height:1.7; color:var(--muted); margin:0 0 16px; min-height:66px; }
+    #onboard .onboard-dots { display:flex; justify-content:center; gap:7px; margin-bottom:16px; }
+    #onboard .onboard-dots i { width:8px; height:8px; border-radius:50%; background:rgba(127,127,127,.35); }
+    #onboard .onboard-dots i.on { background:#2d7d52; }
+    #onboard .onboard-actions { display:flex; gap:8px; align-items:center; }
+    #onboard .onboard-actions .spacer { flex:1; }
+    #onboard #onboard-next { background:#2d7d52; color:#fff; border:0; border-radius:7px; padding:9px 18px; cursor:pointer; }
+    #onboard #onboard-prev:disabled { opacity:.4; }
     #walk-hint { display:none; position:fixed; z-index:26; bottom:22px; left:50%; transform:translateX(-50%); background:var(--panel-bg); color:var(--text); border-radius:10px; padding:12px 18px; box-shadow:0 2px 16px #0003; font-size:13px; }
     body.walk-mode #walk-hint { display:block; }
     body.walk-mode #hud,body.walk-mode #tools,body.walk-mode #nav-panel,body.walk-mode #tour-bar { display:none!important; }
@@ -505,6 +533,7 @@
     <button id="tl-share" type="button" title="分享视角链接" data-i18n-title="tlShare">↗</button>
     <button id="tl-export" type="button" title="导出图片" data-i18n-title="tlExport">▧</button>
     <button id="tl-fs" type="button" title="全屏" data-i18n-title="tlFs">⛶</button>
+    <button id="tl-fly" type="button" title="自由视角" data-i18n-title="tlFly">✈</button>
     <button id="tl-flag" type="button" title="地图纠错" data-i18n-title="tlFlag">⚑</button>
     <button id="tl-lang" type="button" title="Switch to English" data-i18n-title="tlLang">EN</button>
     <button id="tl-about" type="button" title="关于本地图" data-i18n-title="tlAbout">ⓘ</button>
@@ -525,6 +554,15 @@
       <button id="nav-exit" type="button" data-i18n="navExit">退出导航</button>
     </div>
   </div>
+  <div id="freecam-hud">
+    <span class="keys" data-i18n-html="flyKeys">WASD 移动 · <b>Space</b> 上升 · <b>C</b> 下降 · <b>Shift</b> 加速 · 滚轮调速 · <b>Esc</b> 退出</span>
+    <span id="freecam-speed">30 m/s</span>
+    <button id="freecam-exit" class="tb" type="button" data-i18n="flyExit">退出</button>
+  </div>
+  <div id="fly-stick"><div id="fly-knob"></div></div>
+  <button id="fly-up" type="button" aria-label="上升">▲</button>
+  <button id="fly-down" type="button" aria-label="下降">▼</button>
+
   <div id="walk-setup" hidden role="dialog" aria-labelledby="walk-title"><h2 id="walk-title" data-i18n="walkTitle">在虎溪走一走</h2><p>电脑端使用鼠标查看，WASD 移动，按住 Shift 加速，Esc 返回原视角。当前开放已映射道路与广场，地面及入口为示意。</p><label for="walk-spawn" data-i18n="walkSpawnLabel">从这里开始</label><select id="walk-spawn"><option>综合楼</option><option>第一教学楼</option><option>信息技术科研楼</option><option>图书馆</option></select><button id="walk-start" type="button" data-i18n="walkStart">开始步行</button> <button id="walk-cancel" class="tb" type="button" data-i18n="walkCancel">取消</button></div>
   <div id="tour-setup" hidden role="dialog" aria-labelledby="tour-setup-title">
     <h2 id="tour-setup-title" data-i18n="tourChoose">选择游览路线</h2>
@@ -573,6 +611,7 @@
     <div>源码：<a href="https://github.com/zhipengGui/cqu-huxi-campus-3d" target="_blank" rel="noopener">github.com/zhipengGui/cqu-huxi-campus-3d</a></div>
     <div class="muted" style="margin-top:6px" data-i18n="aboutSrc">数据来源：OpenStreetMap（ODbL）· 重大官网图集 · 官方公示与校园平面图；部分新建建筑依卫星影像判读，高度与细部含估算。</div>
     <div class="muted" data-i18n="aboutNote">仅用于学习交流，建筑形态非测绘精度。</div>
+    <button id="onboard-about-entry" class="tb" type="button" style="margin-top:8px" data-i18n="onboardReplay">重新查看功能导览</button>
   </div>
   <a id="osm-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap 贡献者</a>
   <div id="watermark" data-i18n="watermark">重庆大学虎溪校区 3D 地图 · zhipengGui</div>

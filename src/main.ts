@@ -23,6 +23,8 @@ import { buildVegetation, type VegetationSystem } from "./vegetation";
 import { streamLandmarkGLBs } from "./landmarkStream";
 import { buildTraffic, type TrafficSystem, type TrafficControls } from "./traffic";
 import { buildTourRoutes, type TourRoute } from "./tourRoutes";
+import { FreeCam } from "./freecam";
+import { initOnboarding } from "./onboarding";
 import { cancelFly, flyTo, flyAlong } from "./flyTo";import { LabelLayer } from "./labels";
 import {
   BuildingPicker,
@@ -53,6 +55,30 @@ const mobileLayout=window.matchMedia('(max-width:640px)');
 const hud=document.querySelector<HTMLElement>('#hud')!;
 let walking:Walking|null=null;
 let walkWorld:WalkWorld|null=null;
+let freeCam:FreeCam|null=null;
+
+// ---- 自由视角 ----
+function enterFreeCam():void{
+  if(!freeCam)return;
+  if(freeCam.active){freeCam.exit();return;}
+  walking?.exit();
+  if(tour.on)setTour(false);
+  if(navMode)setNavMode(false);
+  if(followTarget)exitFollow();
+  if(flagMode)setFlagMode(false);
+  if(freeCam.enter()){
+    document.body.classList.add('freecam-mode');
+    picker?.setEnabled(false);
+    document.querySelector('#freecam-speed')!.textContent=`${Math.round(freeCam.speed)} m/s`;
+    if(matchMedia('(pointer: coarse)').matches){
+      document.body.classList.add('freecam-touch');
+      if(matchMedia('(orientation: portrait)').matches)showToast(t("flyRotateHint"));
+    }
+  }
+}
+document.querySelector("#tl-fly")!.addEventListener("click",enterFreeCam);
+window.addEventListener("wheel",(e)=>{if(freeCam?.active){freeCam.wheel(e.deltaY);}},{passive:true});
+
 let sceneData:SceneData|null=null;
 let walkViewport:[number,number]=[0,0];
 hud.classList.toggle('collapsed',mobileLayout.matches);
@@ -504,6 +530,11 @@ async function loadScene(): Promise<void> {
     if(message)showToast(message);
     if(!active&&(walkViewport[0]!==innerWidth||walkViewport[1]!==innerHeight)){resize();if(selectedPlace)focusPlace(selectedPlace);else homeView();}
   });
+  freeCam=new FreeCam(camera,controls,renderer.domElement,walkWorld,{
+    onSpeed:(s)=>{document.querySelector('#freecam-speed')!.textContent=`${Math.round(s)} m/s`;},
+    onEdge:()=>showToast(t("flyEdge")),
+    onExit:(msg)=>{document.body.classList.remove('freecam-mode');picker?.setEnabled(true);shadowDirty=true;if(msg)showToast(msg);},
+  });
   routeNavigator.onStatus = (msg) => {
     navStatusEl.textContent = msg || (navMode ? t("navStatusDefault") : "");
   };
@@ -763,6 +794,7 @@ loadScene().then(() => {
   } else homeView();
   shadowDirty=true;
   document.querySelector<HTMLElement>('#boot')!.hidden=true;
+  initOnboarding({t,getLang});
 }).catch((e: unknown) => {
   statsEl.textContent = "加载出错：" + (e instanceof Error ? e.message : String(e));
   statsEl.classList.add("err");
@@ -1214,8 +1246,57 @@ function renderPlacesPanel(): void {
 }
 
 // ---- 键盘快捷键 ----
+// 摇杆与升降钮（触屏）
+(function initFlyTouch(){
+  const stick=document.querySelector<HTMLElement>('#fly-stick');
+  const knob=document.querySelector<HTMLElement>('#fly-knob');
+  if(!stick||!knob)return;
+  let pid=-1,cx=0,cy=0,R=44;
+  const setKnob=(dx:number,dy:number)=>{knob.style.transform=`translate(${dx}px,${dy}px)`};
+  stick.addEventListener('touchstart',(e:TouchEvent)=>{e.preventDefault();const t=e.changedTouches[0];pid=t.identifier;const r=stick.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;},{passive:false});
+  stick.addEventListener('touchmove',(e)=>{
+    e.preventDefault();
+    for(const t of e.changedTouches){
+      if(t.identifier!==pid)continue;
+      let dx=t.clientX-cx,dy=t.clientY-cy;
+      const len=Math.hypot(dx,dy);
+      if(len>R){dx=dx/len*R;dy=dy/len*R;}
+      setKnob(dx,dy);
+      freeCam!.mobileInput.x=dx/R;freeCam!.mobileInput.y=-dy/R;
+    }
+  },{passive:false});
+  const end=(e:TouchEvent)=>{for(const t of e.changedTouches){if(t.identifier!==pid)continue;pid=-1;setKnob(0,0);freeCam!.mobileInput.x=0;freeCam!.mobileInput.y=0;}};
+  stick.addEventListener('touchend',end);stick.addEventListener('touchcancel',end);
+  for(const [id,dir] of [['#fly-up','up'],['#fly-down','down']] as const){
+    const btn=document.querySelector<HTMLElement>(id);
+    if(!btn)continue;
+    const on=(e:TouchEvent)=>{e.preventDefault();freeCam!.mobileInput[dir]=true;};
+    const off=():void=>{freeCam!.mobileInput[dir]=false;};
+    btn.addEventListener('touchstart',on,{passive:false});
+    btn.addEventListener('touchend',off);btn.addEventListener('touchcancel',off);
+  }
+  // 右半屏拖动=视角（freecam-mode 下 OrbitControls 已禁用，PointerLock 在触屏上不可用）
+  let lookId=-1,lx=0,ly=0;
+  renderer.domElement.addEventListener('touchstart',(e)=>{if(!freeCam?.active)return;const t=e.changedTouches[0];if(t.clientX<innerWidth*0.4)return;lookId=t.identifier;lx=t.clientX;ly=t.clientY;},{passive:true});
+  renderer.domElement.addEventListener('touchmove',(e)=>{
+    if(!freeCam?.active)return;
+    for(const t of e.changedTouches){
+      if(t.identifier!==lookId)continue;
+      const yaw=-(t.clientX-lx)*0.0045,pitch=-(t.clientY-ly)*0.0045;
+      const cam=camera;
+      const euler=new THREE.Euler().setFromQuaternion(cam.quaternion,'YXZ');
+      euler.y+=yaw;euler.x=Math.max(-1.45,Math.min(1.45,euler.x+pitch));
+      cam.quaternion.setFromEuler(euler);
+      lx=t.clientX;ly=t.clientY;
+    }
+  },{passive:true});
+  const lookEnd=(e:TouchEvent)=>{for(const t of e.changedTouches)if(t.identifier===lookId)lookId=-1;};
+  renderer.domElement.addEventListener('touchend',lookEnd);renderer.domElement.addEventListener('touchcancel',lookEnd);
+})();
+
 function escapeAll(): void {
   if(walking?.active){walking.exit();return;}
+  if(freeCam?.active){freeCam.exit();return;}
   if(!document.querySelector<HTMLElement>('#walk-setup')!.hidden){document.querySelector<HTMLElement>('#walk-setup')!.hidden=true;return;}
   if(!document.querySelector<HTMLElement>('#tour-setup')!.hidden){document.querySelector<HTMLElement>('#tour-setup')!.hidden=true;return;}
   if(!document.querySelector<HTMLElement>('#flag-dialog')!.hidden){document.querySelector<HTMLElement>('#flag-dialog')!.hidden=true;setFlagMode(false);return;}
@@ -1232,6 +1313,7 @@ window.addEventListener("keydown", (e) => {
   if(walking?.active){if(e.key==='Escape')walking.exit();return;}
   const k = e.key.toLowerCase();
   if (k === "h") document.querySelector<HTMLButtonElement>("#tl-home")!.click();
+  else if (k === "v") enterFreeCam();
   else if (k === "n") document.querySelector<HTMLButtonElement>("#tl-compass")!.click();
   else if (k === "1") applyLighting("morning");
   else if (k === "2") applyLighting("day");
@@ -1381,7 +1463,9 @@ renderer.setAnimationLoop((t) => {
     ripple.offset.y = (t * 0.000007) % 1;
   }
   const elapsed=lastWalkTime?(t-lastWalkTime)/1000:0;lastWalkTime=t;
-  if(walking?.active)walking.update(elapsed);else controls.update();
+  if(walking?.active)walking.update(elapsed);
+  else if(freeCam?.active){freeCam.update(elapsed);}
+  else controls.update();
   updateDetailAssets();
   if (scene.fog instanceof THREE.Fog) {
     const distance = camera.position.distanceTo(controls.target);
@@ -1407,7 +1491,7 @@ renderer.setAnimationLoop((t) => {
 });
 
 // 调试入口（控制台用）
-Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get vegetation(){return vegetation;},get treeSys(){return treeSys;},get follow(){return followTarget;},followAt(mi:number,ii:number){const g=scene.getObjectByName('g-traffic');if(!g)return;let i=0;let target:THREE.InstancedMesh|undefined;g.traverse(o=>{if((o as THREE.InstancedMesh).isInstancedMesh){if(i===mi)target=o as THREE.InstancedMesh;i++;}});if(target)followTarget={mesh:target,id:ii};},get trafficCtl(){return trafficCtl;} } });
+Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get freeCam(){return freeCam;},get vegetation(){return vegetation;},get treeSys(){return treeSys;},get follow(){return followTarget;},followAt(mi:number,ii:number){const g=scene.getObjectByName('g-traffic');if(!g)return;let i=0;let target:THREE.InstancedMesh|undefined;g.traverse(o=>{if((o as THREE.InstancedMesh).isInstancedMesh){if(i===mi)target=o as THREE.InstancedMesh;i++;}});if(target)followTarget={mesh:target,id:ii};},get trafficCtl(){return trafficCtl;} } });
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-building-view]")) {
   button.addEventListener("click", () => focusBuilding(flyTargetBuilding, button.dataset.buildingView));
