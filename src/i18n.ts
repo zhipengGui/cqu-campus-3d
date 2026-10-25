@@ -48,6 +48,7 @@ export const D: Record<string, Pair> = {
   navWalk: { zh: "步行前往", en: "Walk there" },
   walkArrive: { zh: "已到达", en: "Arrived at" },
   walkOffRoute: { zh: "已偏离路线，正在重新规划", en: "Off route, recalculating" },
+  walkStartFail: { zh: "此处无法开始步行，请靠近道路后重试", en: "Cannot start walking here — get closer to a road and retry" },
   walkLeft: { zh: "左转", en: "turn left" },
   walkRight: { zh: "右转", en: "turn right" },
   walkAhead: { zh: "直行", en: "continue ahead" },

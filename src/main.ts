@@ -598,11 +598,22 @@ let walkRouteState: { points: [number, number][]; endName: string } | null = nul
 // ---- 行走导航（M19）：路线就绪后“步行前往”，漫游中 HUD 引导/偏航重算/到达提示 ----
 function walkRoute(): void {
   const r = routeNavigator?.result;
-  if (!r?.points.length || !walking) return;
+  if (!r?.points.length || !walking || !walkWorld) return;
   const pts = r.points;
   walkRouteState = { points: pts, endName: routeNavigator!.end?.label ?? "终点" };
-  const look = pts[Math.min(2, pts.length - 1)];
-  if (!walking.enter(pts[0], look)) { walkRouteState = null; return; }
+  try {
+    if (walking.enter(pts[0], pts[Math.min(2, pts.length - 1)])) return;
+    // 起点被碰撞世界拒绝：沿路线向前找第一个可行走点
+    const spawn = walkWorld.findSpawn(pts[0], pts.slice(1, 24));
+    if (spawn) {
+      const idx = Math.max(0, pts.findIndex((p) => Math.hypot(p[0] - spawn[0], p[1] - spawn[1]) < 1));
+      if (walking.enter(spawn, pts[Math.min(idx + 2, pts.length - 1)])) return;
+    }
+  } catch (err) {
+    console.warn("walk enter failed", err);
+  }
+  walkRouteState = null;
+  showToast(t("walkStartFail"));
 }
 document.querySelector("#nav-walk")!.addEventListener("click", walkRoute);
 
