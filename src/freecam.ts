@@ -3,13 +3,14 @@ import type {OrbitControls} from "three/examples/jsm/controls/OrbitControls.js";
 import type {FlyWorld} from "./walkCollision";
 import type {RoadPoint} from "./routing";
 import {SharedPointerLock, type LockOwner} from "./pointerLock";
+import { cancelFly } from "./flyTo";
 
 /** 自由视角（FreeCam）：第一人称的"飞行预设"——WASD 平移 + Space/C 升降
  *  + Shift 加速 + 滚轮调速。带建筑高度碰撞（可飞越楼顶）与模型范围边界。
  *  指针锁定走共享 SharedPointerLock（owner 制）。 */
 
 const EDGE = { x0: -1515, x1: 1604, y0: -1352, y1: 1659 }; // 模型范围（含熙街/医院/周边）
-const Y_MIN = 2, Y_MAX = 500;
+const Y_MIN = 2, Y_MAX = 1600; // 上限涵盖 home 全景机位（~1450m），进入时不跳变
 
 export interface FreeCamEvents {
   onSpeed?(speed: number): void;
@@ -50,10 +51,15 @@ export class FreeCam implements LockOwner {
 
   enter():boolean {
     if(this.active)return false;
+    cancelFly(); // 中断进行中的 flyTo/巡游运镜，防止其覆盖飞行位置
     const c=this.camera,o=this.orbit;
     this.snapshot={position:c.position.clone(),quaternion:c.quaternion.clone(),target:o.target.clone(),fov:c.fov,view:c.view?{...c.view}:null};
     const damping=o.enableDamping;o.enableDamping=false;o.update();o.enableDamping=damping;o.enabled=false;
     this.active=true;this.lockDegraded=false;this.keys.clear();c.clearViewOffset();
+    // 起点一次性钳入边界（如从 home 高远景进入），避免首帧移动时跳变
+    c.position.x=Math.max(EDGE.x0+2,Math.min(EDGE.x1-2,c.position.x));
+    c.position.z=Math.max(-EDGE.y1+2,Math.min(-EDGE.y0-2,c.position.z));
+    c.position.y=Math.max(Y_MIN,Math.min(Y_MAX,c.position.y));
     this.lock.request(this);
     return true;
   }
@@ -106,7 +112,8 @@ export class FreeCam implements LockOwner {
       // 水平碰撞（按当前飞行高度判定建筑顶）
       const pos:RoadPoint=[c.position.x,-c.position.z];
       const moved=this.world.moveFly(pos,[step.x,-step.z],c.position.y);
-      let nx=c.position.x+moved[0],ny=c.position.y+step.y,nz=c.position.z+moved[1];
+      // moved 是地图 y 系位移，世界 z=-y：Δz = -Δy
+      let nx=c.position.x+moved[0],ny=c.position.y+step.y,nz=c.position.z-moved[1];
       // 高度与边界
       ny=Math.max(Y_MIN,Math.min(Y_MAX,ny));
       const beyond=nx<EDGE.x0||nx>EDGE.x1||nz<-EDGE.y1||nz>-EDGE.y0;
