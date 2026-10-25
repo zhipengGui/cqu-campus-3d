@@ -56,6 +56,7 @@ const hud=document.querySelector<HTMLElement>('#hud')!;
 let walking:Walking|null=null;
 let walkWorld:WalkWorld|null=null;
 let freeCam:FreeCam|null=null;
+let dragLook:{x:number;y:number;id:number}|null=null;
 
 // ---- 自由视角 ----
 function enterFreeCam():void{
@@ -76,7 +77,10 @@ function enterFreeCam():void{
     }
   }
 }
-document.querySelector("#tl-fly")!.addEventListener("click",enterFreeCam);
+document.querySelector("#tl-fly")!.addEventListener("click",(e)=>{
+  (e.currentTarget as HTMLButtonElement).blur(); // 防 Space 回触按钮
+  enterFreeCam();
+});
 window.addEventListener("wheel",(e)=>{if(freeCam?.active){freeCam.wheel(e.deltaY);}},{passive:true});
 
 let sceneData:SceneData|null=null;
@@ -535,6 +539,22 @@ async function loadScene(): Promise<void> {
     onEdge:()=>showToast(t("flyEdge")),
     onExit:(msg)=>{document.body.classList.remove('freecam-mode');picker?.setEnabled(true);shadowDirty=true;if(msg)showToast(msg);},
   });
+  // Pointer Lock 失败降级：按住拖动旋转视角（同触屏逻辑）
+  renderer.domElement.addEventListener('pointerdown',(e)=>{
+    if(!freeCam?.active||freeCam.pointer.isLocked||e.pointerType==='touch')return;
+    dragLook={x:e.clientX,y:e.clientY,id:e.pointerId};
+  });
+  renderer.domElement.addEventListener('pointermove',(e)=>{
+    if(!freeCam?.active||!dragLook||e.pointerId!==dragLook.id)return;
+    const yaw=-(e.clientX-dragLook.x)*0.0038,pitch=-(e.clientY-dragLook.y)*0.0038;
+    const euler=new THREE.Euler().setFromQuaternion(camera.quaternion,'YXZ');
+    euler.y+=yaw;euler.x=Math.max(-1.45,Math.min(1.45,euler.x+pitch));
+    camera.quaternion.setFromEuler(euler);
+    dragLook.x=e.clientX;dragLook.y=e.clientY;
+  });
+  const dragLookEnd=(e:PointerEvent):void=>{if(dragLook&&e.pointerId===dragLook.id)dragLook=null;};
+  renderer.domElement.addEventListener('pointerup',dragLookEnd);
+  renderer.domElement.addEventListener('pointercancel',dragLookEnd);
   routeNavigator.onStatus = (msg) => {
     navStatusEl.textContent = msg || (navMode ? t("navStatusDefault") : "");
   };
