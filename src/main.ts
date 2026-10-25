@@ -1188,6 +1188,7 @@ const lastShadowTarget=new THREE.Vector3(Infinity,Infinity,Infinity);
 let lastShadowSize=-1;
 renderer.setAnimationLoop((t) => {
   const nowMs = performance.now();
+  const dtSec = lastTickMs ? Math.min(0.05, (nowMs - lastTickMs) / 1000) : 0.016; // 帧间隔须在覆盖前取
   tickAdaptiveQuality(nowMs, lastTickMs ? nowMs - lastTickMs : 0);
   lastTickMs = nowMs;
   const nextFrame=advanceFrame(lastFrame,t);if(nextFrame===null)return;
@@ -1217,7 +1218,7 @@ renderer.setAnimationLoop((t) => {
   labels.update(camera, controls.target);
   treeSys?.updateLod(camera.position);
   rerankLandmarks?.(controls.target);
-  traffic?.update(Math.min(0.05, lastTickMs ? (nowMs - lastTickMs) / 1000 : 0.016));
+  traffic?.update(dtSec);
   updateWalkHud();
   renderer.render(scene, camera);
   labels.render(scene, camera);
