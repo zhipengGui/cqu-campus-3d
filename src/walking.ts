@@ -14,6 +14,8 @@ export class Walking {
   private world:WalkWorld;
   private changed:(active:boolean,message?:string)=>void;
   private snapshot:{position:THREE.Vector3;quaternion:THREE.Quaternion;target:THREE.Vector3;fov:number;near:number;far:number;view:THREE.PerspectiveCamera['view']}|null=null;
+  private stride=0; // 累计步距，用于行走起伏
+  eyeHeight=1.7;
   constructor(camera:THREE.PerspectiveCamera,orbit:OrbitControls,canvas:HTMLElement,world:WalkWorld,changed:(active:boolean,message?:string)=>void){
     this.camera=camera;this.orbit=orbit;this.world=world;this.changed=changed;this.pointer=new PointerLockControls(camera,canvas);
     this.pointer.minPolarAngle=.12;this.pointer.maxPolarAngle=Math.PI-.12;
@@ -32,7 +34,8 @@ export class Walking {
     // Flush residual orbit damping before giving the camera to another controller.
     const damping=o.enableDamping;o.enableDamping=false;o.update();o.enableDamping=damping;o.enabled=false;
     this.active=true;this.keys.clear();c.clearViewOffset();c.fov=60;c.near=.1;c.far=4000;c.updateProjectionMatrix();
-    c.position.set(point[0],1.65,-point[1]);
+    this.stride=0;
+    c.position.set(point[0],this.eyeHeight,-point[1]);
     const direction=new THREE.Vector3(lookAt[0]-point[0],0,-lookAt[1]+point[1]);if(direction.lengthSq()<.01)direction.set(0,0,-1);
     c.lookAt(c.position.clone().add(direction));this.update(0);this.changed(true);
     const attempt=++this.attempt;try{
@@ -61,8 +64,13 @@ export class Walking {
       delta.addScaledVector(right,Number(this.keys.has('KeyD'))-Number(this.keys.has('KeyA')));
       if(delta.lengthSq()){
         const speed=this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')?8:3.5;
-        delta.normalize().multiplyScalar(speed*Math.max(0,Math.min(.05,seconds)));
-        const [x,north]=this.world.move([c.position.x,-c.position.z],[delta.x,-delta.z]);c.position.set(x,1.65,-north);
+        const step=speed*Math.max(0,Math.min(.05,seconds));
+        delta.normalize().multiplyScalar(step);
+        const [x,north]=this.world.move([c.position.x,-c.position.z],[delta.x,-delta.z]);
+        this.stride+=step;
+        // 行走起伏：步频随速度，幅度 4.5cm
+        const bob=Math.abs(Math.sin(this.stride*1.9))*.045;
+        c.position.set(x,this.eyeHeight+bob,-north);
       }
     }
     this.orbit.target.copy(c.position).addScaledVector(forward,10);

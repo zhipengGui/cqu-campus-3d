@@ -54,7 +54,7 @@ export function initNavigationPanel(nav:Navigator,places:SearchItem[],onRoute:()
     get('#nav-note').textContent=[nav.start?.place?label(nav.start.place):null,nav.end?.place?label(nav.end.place):null].filter(Boolean).join(' → ');
     get('#nav-turns').textContent=nav.result?[...routeTurns(nav.result.points,{back:L().t('turnBack'),left:L().t('turnLeft'),right:L().t('turnRight')}),L().t('navArrive')].join(' · '):'';
   }
-  nav.onChange=()=>{refresh();if(nav.result)onRoute();};
+  nav.onChange=()=>{refresh();const w=get<HTMLButtonElement>('#nav-walk');if(w)w.hidden=!nav.result;if(nav.result)onRoute();};
   get('#nav-swap').addEventListener('click',()=>nav.swap());
   get('#nav-go').addEventListener('click',()=>nav.recompute());
   L().onLangChange(()=>{rebuildOptions();refresh();});

@@ -21,6 +21,7 @@ import {
 import { buildTrees, type TreeSystem, type Season } from "./trees";
 import { buildVegetation, type VegetationSystem } from "./vegetation";
 import { streamLandmarkGLBs } from "./landmarkStream";
+import { buildTraffic, type TrafficSystem } from "./traffic";
 import { cancelFly, flyTo } from "./flyTo";import { LabelLayer } from "./labels";
 import {
   BuildingPicker,
@@ -167,8 +168,10 @@ const gSports = new THREE.Group();
 const gWater = new THREE.Group();
 const gRoads = new THREE.Group();
 const gTrees = new THREE.Group();
+const gTraffic = new THREE.Group();
+gTraffic.name = "g-traffic";
 const gContext = new THREE.Group();
-scene.add(gGreen, gSports, gWater, gRoads, gTrees, gContext);
+scene.add(gGreen, gSports, gWater, gRoads, gTrees, gTraffic, gContext);
 
 // ---- GLB ----
 const gltfLoader = new GLTFLoader();
@@ -469,6 +472,9 @@ async function loadScene(): Promise<void> {
   const manualGreenZones = data.green.filter((g) => g.manual);
   treeSys = buildTrees(gTrees, [...campusGreen,...sportsSiteAreas(campusGreen)], data.roads, campusWater, data.buildings, data.boundary?.pts, manualGreenZones);
   vegetation = buildVegetation(gTrees, { green: data.green, roads: data.roads, water: campusWater, buildings: data.buildings });
+  const jinOutline = campusWater.find((w) => w.name === "缙湖")?.outers[0] ?? null;
+  traffic = buildTraffic(gTraffic, { roads: data.roads, lakeOutline: jinOutline });
+  walkBuildings = data.buildings.filter((b) => b.inside && b.name && !b.name.includes("门"));
   statsVegCount = vegetation.counts.bushes + vegetation.counts.flowers + vegetation.counts.hedges + vegetation.counts.beds;
   // 环湖专类园标牌（植物园环湖带，随语言切换 relabel）
   for (const gl of vegetation.gardenLabels) {
@@ -483,6 +489,7 @@ async function loadScene(): Promise<void> {
   routeNavigator = new Navigator(scene, data.graph);
   walkWorld=new WalkWorld(data);
   walking=new Walking(camera,controls,renderer.domElement,walkWorld,(active,message)=>{
+    walkRouteState=null;
     document.body.classList.toggle('walk-mode',active);picker?.setEnabled(!active);shadowDirty=true;
     document.querySelector<HTMLElement>('#walk-setup')!.hidden=true;
     if(message)showToast(message);
@@ -583,7 +590,91 @@ let statsTreeCount = 0;
 let statsVegCount = 0;
 let treeSys: TreeSystem | null = null;
 let vegetation: VegetationSystem | null = null;
+let traffic: TrafficSystem | null = null;
+let walkBuildings: Building[] = [];
 let rerankLandmarks: ((center: THREE.Vector3) => void) | null = null;
+let walkRouteState: { points: [number, number][]; endName: string } | null = null;
+
+// ---- 行走导航（M19）：路线就绪后“步行前往”，漫游中 HUD 引导/偏航重算/到达提示 ----
+function walkRoute(): void {
+  const r = routeNavigator?.result;
+  if (!r?.points.length || !walking) return;
+  const pts = r.points;
+  walkRouteState = { points: pts, endName: routeNavigator!.end?.label ?? "终点" };
+  const look = pts[Math.min(2, pts.length - 1)];
+  if (!walking.enter(pts[0], look)) { walkRouteState = null; return; }
+}
+document.querySelector("#nav-walk")!.addEventListener("click", walkRoute);
+
+function nearestOnRoute(px: number, py: number): { seg: number; dist: number } {
+  const pts = walkRouteState!.points;
+  let best = { seg: 0, dist: Infinity };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1];
+    const len2 = dx * dx + dy * dy || 1e-9;
+    const t = Math.max(0, Math.min(1, ((px - pts[i][0]) * dx + (py - pts[i][1]) * dy) / len2));
+    const d = Math.hypot(px - (pts[i][0] + dx * t), py - (pts[i][1] + dy * t));
+    if (d < best.dist) best = { seg: i, dist: d };
+  }
+  return best;
+}
+
+let walkHudFrame = 0;
+function updateWalkHud(): void {
+  const navEl = document.querySelector<HTMLElement>("#walk-nav");
+  const nearEl = document.querySelector<HTMLElement>("#walk-nearby");
+  if (!walking?.active) { if (navEl) navEl.textContent = ""; if (nearEl) nearEl.textContent = ""; walkHudFrame = 0; return; }
+  walkHudFrame++;
+  // 导航引导（每 12 帧）
+  if (walkRouteState && navEl && walkHudFrame % 12 === 0) {
+    const px = camera.position.x, py = -camera.position.z;
+    const { seg, dist } = nearestOnRoute(px, py);
+    const pts = walkRouteState.points;
+    if (dist > 22) {
+      showToast(t("walkOffRoute"));
+      if (routeNavigator?.end) {
+        routeNavigator.setStart(px, py, "我的位置");
+        const r2 = routeNavigator.result;
+        if (r2) walkRouteState = { points: r2.points, endName: walkRouteState.endName };
+      }
+    } else {
+      let remaining = 0;
+      for (let i = seg + 1; i < pts.length; i++) remaining += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      remaining += Math.hypot(pts[seg + 1][0] - px, pts[seg + 1][1] - py);
+      if (remaining < 12) {
+        showToast(`${t("walkArrive")} ${localName(walkRouteState.endName)}`);
+        walkRouteState = null;
+        navEl.textContent = "";
+      } else {
+        // 下一步转向：找最近拐点与朝向差
+        let hint = t("walkAhead");
+        for (let i = seg + 1; i < Math.min(seg + 6, pts.length - 1); i++) {
+          const d1x = pts[i][0] - pts[i - 1][0], d1y = pts[i][1] - pts[i - 1][1];
+          const d2x = pts[i + 1][0] - pts[i][0], d2y = pts[i + 1][1] - pts[i][1];
+          const cross = d1x * d2y - d1y * d2x;
+          if (Math.abs(cross) > 0.4 * Math.hypot(d2x, d2y) * Math.hypot(d1x, d1y)) {
+            hint = cross > 0 ? t("walkLeft") : t("walkRight");
+            break;
+          }
+        }
+        navEl.textContent = `📍 ${localName(walkRouteState.endName)} ${Math.round(remaining)}m · ${hint}`;
+      }
+    }
+  }
+  // 近距楼名（每 24 帧）
+  if (nearEl && walkHudFrame % 24 === 0) {
+    const px = camera.position.x, py = -camera.position.z;
+    let best: { name: string; d: number } | null = null;
+    for (const b of walkBuildings) {
+      const p = b.polygon;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [x, y] of p) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      const d = Math.hypot((x0 + x1) / 2 - px, (y0 + y1) / 2 - py);
+      if (d < 48 && (!best || d < best.d)) best = { name: b.name, d };
+    }
+    nearEl.textContent = best ? ` · ${localName(best.name)} ${Math.round(best.d)}m` : "";
+  }
+}
 
 // ---- 四季（季相只改植被实例色，与光影预设正交）----
 function applySeason(s: Season): void {
@@ -662,6 +753,7 @@ const LAYER_DEFS: LayerDef[] = [
   { name: { zh: "校园边界", en: "Campus boundary" }, desc: { zh: "白色细线标示大致范围", en: "Thin white outline of the grounds" }, get: () => boundaryLine?.visible ?? false, set: (v) => { if (boundaryLine) boundaryLine.visible = v; } },
   { name: { zh: "校园建筑", en: "Buildings" }, desc: { zh: "边界内的主要建筑", en: "Main buildings inside the boundary" }, get: () => buildingsRef?.visible ?? true, set: (v) => { if (buildingsRef) buildingsRef.visible = v; } },
   { name: { zh: "树木", en: "Trees" }, desc: { zh: "树木、绿篱与花境", en: "Trees, hedges & flower beds" }, get: () => gTrees.visible, set: (v) => { gTrees.visible = v; } },
+  { name: { zh: "行人车流", en: "Pedestrians & traffic" }, desc: { zh: "行人漫步与观光车/校车", en: "Walkers, tour carts & campus coaches" }, get: () => gTraffic.visible, set: (v) => { gTraffic.visible = v; } },
   { name: { zh: "道路与桥梁", en: "Roads & bridges" }, desc: { zh: "车行道与步行道", en: "Vehicle roads and walkways" }, get: () => gRoads.visible, set: (v) => { gRoads.visible = v; } },
   { name: { zh: "湖塘水面", en: "Lakes & ponds" }, desc: { zh: "缙湖、云湖等水面", en: "Jin Lake, Cloud Lake and more" }, get: () => gWater.visible, set: (v) => { gWater.visible = v; } },
   { name: { zh: "运动场地", en: "Sports grounds" }, desc: { zh: "田径跑道与室外球场", en: "Track and outdoor courts" }, get: () => gSports.visible, set: (v) => { gSports.visible = v; } },
@@ -764,6 +856,7 @@ function applyLighting(key: PresetName): void {
   currentPreset = key;
   picker?.clearSelection();
   dayNight?.apply(key);
+  traffic?.setPhase(key === "night" ? "night" : key === "dusk" ? "dusk" : "day");
   shadowDirty=true;
   sunDirection = sun.position.toArray() as [number,number,number];
   for (const c of document.querySelectorAll<HTMLButtonElement>("#lighting-list .lt-card")) {
@@ -1113,6 +1206,8 @@ renderer.setAnimationLoop((t) => {
   labels.update(camera, controls.target);
   treeSys?.updateLod(camera.position);
   rerankLandmarks?.(controls.target);
+  traffic?.update(Math.min(0.05, lastTickMs ? (nowMs - lastTickMs) / 1000 : 0.016));
+  updateWalkHud();
   renderer.render(scene, camera);
   labels.render(scene, camera);
 });
