@@ -103,12 +103,12 @@ export const PLACE_INFO: Record<string, PlaceInfo> = {
     photo: 'photos/lianchi.jpg',
   },
   重庆海吉亚肿瘤医院: {
-    desc: '校园南侧的肿瘤专科医院主楼。蓝玻璃横带幕墙与白色楼板框依实拍照片复原；层数、横带分格与屋顶设备为估算。',
-    descEn: 'The oncology hospital tower south of campus. Blue banded curtain wall and white spandrels follow user photos; storey count, band rhythm and roof plant are estimated.',
+    desc: '校园南侧的肿瘤专科医院（2018 年营业，地上 21 层）。橙红墙面与米白层间框依卫星影像与现场印象复原；塔楼/裙楼分段与窗带节奏为估算。',
+    descEn: 'The oncology hospital south of campus (opened 2018, 21 storeys above ground). The orange-red walls and cream floor bands follow satellite imagery and on-site recollection; tower/podium split and window rhythm are estimated.',
   },
   医院门诊楼: {
-    desc: '医院门诊楼，白色体量与通长玻璃带依实拍照片复原；与主楼间的连廊位置为推测。',
-    descEn: 'The hospital outpatient building; white volume and full-length glass band follow photos; the link bridge position is estimated.',
+    desc: '医院门诊楼，橙红体量与通长玻璃带依卫星暖色信号复原；与主楼间的连廊位置为推测。',
+    descEn: 'The hospital outpatient building; the orange volume and glass band follow warm satellite signals; the link bridge position is estimated.',
   },
   第二实验楼: {
     desc: '教学区三层实验楼。白框平顶为通用实验楼形制（卫星证据不足，造型以推测为主）。',
