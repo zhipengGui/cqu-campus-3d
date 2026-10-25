@@ -21,8 +21,9 @@ import {
 import { buildTrees, type TreeSystem, type Season } from "./trees";
 import { buildVegetation, type VegetationSystem } from "./vegetation";
 import { streamLandmarkGLBs } from "./landmarkStream";
-import { buildTraffic, type TrafficSystem } from "./traffic";
-import { cancelFly, flyTo } from "./flyTo";import { LabelLayer } from "./labels";
+import { buildTraffic, type TrafficSystem, type TrafficControls } from "./traffic";
+import { buildTourRoutes, type TourRoute } from "./tourRoutes";
+import { cancelFly, flyTo, flyAlong } from "./flyTo";import { LabelLayer } from "./labels";
 import {
   BuildingPicker,
   type BuildingUserData,
@@ -518,9 +519,13 @@ async function loadScene(): Promise<void> {
   });
   places = collectPlaces({...data, water: campusWater,green:campusGreen}, byName);
   navPanel = initNavigationPanel(routeNavigator,places,focusRoute,{t,getLang,localName,onLangChange});
-  tourStops = TOUR_STOPS.map((s) => places.find((p) => p.name === s.name)).filter(
-    (p): p is PlaceEntry => !!p,
-  );
+  tourRoutes = buildTourRoutes(vegetation.gardenLabels, TOUR_STOPS);
+  activeRoute = tourRoutes[0];
+  rebuildTourStops();
+  for (const r of tourRoutes) {
+    const el = document.querySelector<HTMLElement>(`[data-route-count="${r.id}"]`);
+    if (el) el.textContent = `${r.stops.length} ${getLang() === "en" ? "stops" : "站"}`;
+  }
   renderPlacesPanel();
   initSearch(
     document.querySelector<HTMLInputElement>("#search")!,
@@ -599,6 +604,24 @@ let statsVegCount = 0;
 let treeSys: TreeSystem | null = null;
 let vegetation: VegetationSystem | null = null;
 let traffic: TrafficSystem | null = null;
+let trafficCtl: TrafficControls = { walkers: true, vehicles: true, playing: true };
+let tourRoutes: TourRoute[] = [];
+let activeRoute: TourRoute | null = null;
+
+function rebuildTourStops(): void {
+  if (!activeRoute) return;
+  tourStops = activeRoute.stops.map((st) => {
+    const p = places.find((pl) => pl.name === st.name);
+    if (p) return p;
+    // 园标签站：合成坐标站点（不进详情卡，解说走巡游条）
+    return {
+      name: st.name, kind: "building" as const,
+      target: new THREE.Vector3(st.x ?? 0, 0, -(st.y ?? 0)), distance: 240,
+      group: "游览", num: "·",
+    };
+  });
+  document.querySelector("#tour-count")!.textContent = String(tourStops.length);
+}
 let walkBuildings: Building[] = [];
 let rerankLandmarks: ((center: THREE.Vector3) => void) | null = null;
 let walkRouteState: { points: [number, number][]; endName: string } | null = null;
@@ -772,7 +795,9 @@ const LAYER_DEFS: LayerDef[] = [
   { name: { zh: "校园边界", en: "Campus boundary" }, desc: { zh: "白色细线标示大致范围", en: "Thin white outline of the grounds" }, get: () => boundaryLine?.visible ?? false, set: (v) => { if (boundaryLine) boundaryLine.visible = v; } },
   { name: { zh: "校园建筑", en: "Buildings" }, desc: { zh: "边界内的主要建筑", en: "Main buildings inside the boundary" }, get: () => buildingsRef?.visible ?? true, set: (v) => { if (buildingsRef) buildingsRef.visible = v; } },
   { name: { zh: "树木", en: "Trees" }, desc: { zh: "树木、绿篱与花境", en: "Trees, hedges & flower beds" }, get: () => gTrees.visible, set: (v) => { gTrees.visible = v; } },
-  { name: { zh: "行人车流", en: "Pedestrians & traffic" }, desc: { zh: "行人漫步与观光车/校车", en: "Walkers, tour carts & campus coaches" }, get: () => gTraffic.visible, set: (v) => { gTraffic.visible = v; } },
+  { name: { zh: "行人", en: "Pedestrians" }, desc: { zh: "沿路网漫步的人流", en: "Walkers on paths & roads" }, get: () => trafficCtl.walkers, set: (v) => { trafficCtl.walkers = v; traffic?.setControls(trafficCtl); } },
+  { name: { zh: "车辆", en: "Vehicles" }, desc: { zh: "观光车与校车", en: "Tour carts & campus coach" }, get: () => trafficCtl.vehicles, set: (v) => { trafficCtl.vehicles = v; traffic?.setControls(trafficCtl); } },
+  { name: { zh: "动态", en: "Animated" }, desc: { zh: "暂停或恢复行人车辆动画", en: "Pause or resume the animation" }, get: () => trafficCtl.playing, set: (v) => { trafficCtl.playing = v; traffic?.setControls(trafficCtl); } },
   { name: { zh: "道路与桥梁", en: "Roads & bridges" }, desc: { zh: "车行道与步行道", en: "Vehicle roads and walkways" }, get: () => gRoads.visible, set: (v) => { gRoads.visible = v; } },
   { name: { zh: "湖塘水面", en: "Lakes & ponds" }, desc: { zh: "缙湖、云湖等水面", en: "Jin Lake, Cloud Lake and more" }, get: () => gWater.visible, set: (v) => { gWater.visible = v; } },
   { name: { zh: "运动场地", en: "Sports grounds" }, desc: { zh: "田径跑道与室外球场", en: "Track and outdoor courts" }, get: () => gSports.visible, set: (v) => { gSports.visible = v; } },
@@ -903,7 +928,7 @@ let tourStops: PlaceEntry[] = [];
 
 function tourBarText(): void {
   const it = tourStops[tour.index];
-  const stop = it ? TOUR_STOPS.find((s) => s.name === it.name) : undefined;
+  const stop = it && activeRoute ? activeRoute.stops[tour.index] : undefined;
   document.querySelector("#tour-state")!.textContent = tour.paused ? t("tourPaused") : t("tourState");
   document.querySelector("#tour-pos")!.textContent =
     `${String(tour.index + 1).padStart(2, "0")} / ${tourStops.length}`;
@@ -914,10 +939,22 @@ function tourBarText(): void {
 }
 
 function tourGoto(index: number): void {
-  if (!tourStops.length) return;
+  if (!tourStops.length || !activeRoute) return;
   tour.index = ((index % tourStops.length) + tourStops.length) % tourStops.length;
   const it = tourStops[tour.index];
-  selectPlace(it);
+  const st = activeRoute.stops[tour.index];
+  if (st.x === undefined) {
+    // 地名站：详情卡 + 选中
+    if (it.mesh) picker?.select(it.mesh); else picker?.clearSelection();
+    openDetail(it);
+  } else {
+    // 园标签站：只飞不解说卡（解说在巡游条）
+    picker?.clearSelection();
+    closeDetailOnly();
+  }
+  const target = it?.target.clone() ?? new THREE.Vector3(st.x ?? 0, 0, -(st.y ?? 0));
+  const dist = it?.distance ?? 240;
+  flyAlong(camera, controls, target, dist, { durationMs: 2400, direction: new THREE.Vector3(.35, 1.2, 1) });
   tourBarText();
   startTourTimer();
 }
@@ -949,8 +986,24 @@ function setTour(on: boolean): void {
 }
 
 document.querySelector("#tour-start")!.addEventListener("click", () => {
-  setTour(true);
-  tourGoto(tour.index);
+  // 打开路线选择器（三条主题线）
+  document.querySelector<HTMLElement>("#tour-setup")!.hidden = false;
+});
+document.querySelectorAll<HTMLButtonElement>("#tour-setup .tour-route-card").forEach((card) => {
+  card.addEventListener("click", () => {
+    const route = tourRoutes.find((r) => r.id === card.dataset.route);
+    if (!route) return;
+    activeRoute = route;
+    rebuildTourStops();
+    if (route.season) applySeason(route.season);
+    document.querySelector<HTMLElement>("#tour-setup")!.hidden = true;
+    if (walking?.active) walking.exit();
+    tour.index = 0;
+    setTour(true);
+  });
+});
+document.querySelector("#tour-setup-close")!.addEventListener("click", () => {
+  document.querySelector<HTMLElement>("#tour-setup")!.hidden = true;
 });
 document.querySelector("#tour-pause")!.addEventListener("click", () => {
   tour.paused = !tour.paused;
@@ -1164,6 +1217,10 @@ function renderPlacesPanel(): void {
 function escapeAll(): void {
   if(walking?.active){walking.exit();return;}
   if(!document.querySelector<HTMLElement>('#walk-setup')!.hidden){document.querySelector<HTMLElement>('#walk-setup')!.hidden=true;return;}
+  if(!document.querySelector<HTMLElement>('#tour-setup')!.hidden){document.querySelector<HTMLElement>('#tour-setup')!.hidden=true;return;}
+  if(!document.querySelector<HTMLElement>('#flag-dialog')!.hidden){document.querySelector<HTMLElement>('#flag-dialog')!.hidden=true;setFlagMode(false);return;}
+  if (followTarget) { exitFollow(); return; }
+  if (flagMode) { setFlagMode(false); return; }
   if(document.querySelector('#tools')!.classList.contains('open')){document.querySelector('#tl-more')!.dispatchEvent(new Event('click'));}
   else if (navMode) setNavMode(false);
   else if (tour.on) setTour(false);
@@ -1186,6 +1243,122 @@ window.addEventListener("keydown", (e) => {
   else if (k === "8") applySeason("winter");
   else if (e.key === "Escape") escapeAll();
   else if (k === "?") showToast(t("keysHelp"));
+});
+
+// ---- 跟随视角：点击行人/观光车/校车跟拍，任何视角操作或 Esc 退出 ----
+let followTarget: { mesh: THREE.InstancedMesh; id: number } | null = null;
+const followRay = new THREE.Raycaster();
+const FOLLOW_OFF = new THREE.Vector3(16, 11, 16);
+
+function exitFollow(): void { followTarget = null; }
+
+renderer.domElement.addEventListener("click", (e) => {
+  if (followTarget) return; // 跟随中点击=继续跟随（由 controls 交互退出）
+  if (walking?.active || navMode || flagMode || tour.on) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  followRay.setFromCamera(ndc, camera);
+  const hits = followRay.intersectObjects([gTraffic], true);
+  for (const h of hits) {
+    const mesh = h.object as THREE.InstancedMesh;
+    if (!mesh.isInstancedMesh || h.instanceId === undefined || h.instanceId >= mesh.count) continue;
+    followTarget = { mesh, id: h.instanceId };
+    picker?.clearSelection();
+    showToast(t("followHint"));
+    return;
+  }
+});
+controls.addEventListener("start", exitFollow);
+
+function updateFollow(): void {
+  if (!followTarget) return;
+  if (followTarget.id >= followTarget.mesh.count) { exitFollow(); return; }
+  const arr = followTarget.mesh.instanceMatrix.array;
+  const o = followTarget.id * 16;
+  if (!Number.isFinite(arr[o + 12]) || arr[o + 13] < -10) { exitFollow(); return; } // 隐藏位不跟随
+  const pos = new THREE.Vector3(arr[o + 12], Math.max(0, arr[o + 13]), arr[o + 14]);
+  camera.position.lerp(pos.clone().add(FOLLOW_OFF), 0.05);
+  controls.target.lerp(pos.clone().setY(1.2), 0.08);
+}
+
+// ---- 纠错入口：点选地图位置，预填 GitHub Issue ----
+let flagMode = false;
+let lastFlag: { x: number; y: number; lat: number; lon: number; near: string } | null = null;
+
+function setFlagMode(v: boolean): void {
+  flagMode = v;
+  picker?.setEnabled(!v);
+  document.querySelector("#tl-flag")!.classList.toggle("on", v);
+  document.body.classList.toggle("flag-mode", v);
+  if (v) showToast(t("flagHint"));
+}
+document.querySelector("#tl-flag")!.addEventListener("click", () => setFlagMode(!flagMode));
+
+function flagIssueBody(): string {
+  const f = lastFlag!;
+  return [
+    "**位置**",
+    `地图坐标 x=${f.x.toFixed(0)}, y=${f.y.toFixed(0)}`,
+    `经纬度（推算）：${f.lat.toFixed(6)}, ${f.lon.toFixed(6)}`,
+    `附近：${f.near}`,
+    "",
+    "**问题说明**",
+    document.querySelector<HTMLTextAreaElement>("#flag-desc")!.value || "（请在此补充说明）",
+    "",
+    "> 来自网页地图的纠错入口",
+  ].join("\n");
+}
+
+renderer.domElement.addEventListener("click", (e) => {
+  if (!flagMode) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  followRay.setFromCamera(ndc, camera);
+  const hit = new THREE.Vector3();
+  if (!followRay.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return;
+  const x = hit.x, y = -hit.z;
+  const sceneDataMeta = sceneData?.meta;
+  const lon0 = sceneDataMeta?.origin[0] ?? 106.295;
+  const lat0 = sceneDataMeta?.origin[1] ?? 29.595;
+  const lat = lat0 + y / 111320;
+  const lon = lon0 + x / (111320 * Math.cos((lat0 * Math.PI) / 180));
+  let near = "无命名建筑";
+  let best = Infinity;
+  for (const b of walkBuildings) {
+    const p = b.polygon;
+    const cx = p.reduce((s, q) => s + q[0], 0) / p.length;
+    const cy = p.reduce((s, q) => s + q[1], 0) / p.length;
+    const d = Math.hypot(cx - x, cy - y);
+    if (d < best) { best = d; near = b.name; }
+  }
+  lastFlag = { x, y, lat, lon, near };
+  document.querySelector("#flag-info")!.textContent = `${t("flagNear")}: ${near} · ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  document.querySelector<HTMLElement>("#flag-dialog")!.hidden = false;
+});
+document.querySelector("#flag-cancel")!.addEventListener("click", () => {
+  document.querySelector<HTMLElement>("#flag-dialog")!.hidden = true;
+  setFlagMode(false);
+});
+document.querySelector("#flag-copy")!.addEventListener("click", () => {
+  const body = flagIssueBody();
+  (window.navigator.clipboard?.writeText(body) ?? Promise.reject()).then(
+    () => showToast(t("flagCopied")),
+    () => showToast(t("flagCopyFail")),
+  );
+});
+document.querySelector("#flag-issue")!.addEventListener("click", () => {
+  const body = flagIssueBody();
+  const title = encodeURIComponent(`地图纠错：${lastFlag?.near ?? "未命名位置"}`);
+  const url = `https://github.com/zhipengGui/cqu-huxi-campus-3d/issues/new?title=${title}&body=${encodeURIComponent(body)}`;
+  window.open(url, "_blank");
+  document.querySelector<HTMLElement>("#flag-dialog")!.hidden = true;
+  setFlagMode(false);
 });
 
 // ---- 渲染循环（60fps 帽）----
@@ -1227,13 +1400,14 @@ renderer.setAnimationLoop((t) => {
   treeSys?.updateLod(camera.position);
   rerankLandmarks?.(controls.target);
   traffic?.update(dtSec);
+  updateFollow();
   updateWalkHud();
   renderer.render(scene, camera);
   labels.render(scene, camera);
 });
 
 // 调试入口（控制台用）
-Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get vegetation(){return vegetation;},get treeSys(){return treeSys;} } });
+Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get vegetation(){return vegetation;},get treeSys(){return treeSys;},get follow(){return followTarget;},followAt(mi:number,ii:number){const g=scene.getObjectByName('g-traffic');if(!g)return;let i=0;let target:THREE.InstancedMesh|undefined;g.traverse(o=>{if((o as THREE.InstancedMesh).isInstancedMesh){if(i===mi)target=o as THREE.InstancedMesh;i++;}});if(target)followTarget={mesh:target,id:ii};},get trafficCtl(){return trafficCtl;} } });
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-building-view]")) {
   button.addEventListener("click", () => focusBuilding(flyTargetBuilding, button.dataset.buildingView));

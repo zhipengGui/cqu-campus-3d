@@ -3,21 +3,22 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Road } from "./types";
 import { distPointSeg } from "./trees";
 
-/** 校园动态层（aks-campus-3d 思路的自研实现）：
- *  - 行人：步道路网漫步（环湖人行带加权），胶囊+头实例合批，昼夜调密度
- *  - 车辆：白色小观光车占绝大多数（环湖/主路慢速）+ 大客车（校车）1-2 辆
+/** 校园动态层：
+ *  - 路径预处理：拐角二次贝塞尔圆角化 → 2m 等距重采样 → 累计距离（运行时二分插值）
+ *  - 实体推进：全局 elapsed 驱动（暂停/恢复零漂移），distance 为纯函数
+ *  - 控制开关：行人/车辆/播放独立控制
  *  全部 InstancedMesh：行人 1 + 观光车 1 + 校车 1 = 3 个 draw call。 */
 
 type Pt = [number, number];
 
+export interface TrafficControls { walkers: boolean; vehicles: boolean; playing: boolean }
+
 export interface TrafficSystem {
   update(dt: number): void;
   setPhase(phase: "day" | "dusk" | "night"): void;
+  setControls(c: TrafficControls): void;
   group: THREE.Group;
 }
-
-interface WalkerPath { pts: Pt[]; len: number; lake: boolean }
-interface VehiclePath { pts: Pt[]; len: number }
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -34,6 +35,79 @@ function polylineLen(pts: Pt[]): number {
   for (let i = 0; i < pts.length - 1; i++) l += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
   return l;
 }
+
+// ---- 路径预处理 ----
+
+/** 拐角二次贝塞尔圆角（切入邻段 ≤30%，不冲出路面） */
+function roundPath(input: Pt[], closed: boolean, radius: number): Pt[] {
+  const pts = input.filter((p, i) => !i || Math.hypot(p[0] - input[i - 1][0], p[1] - input[i - 1][1]) > 0.01);
+  if (closed && pts.length > 1 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.01) pts.pop();
+  if (pts.length < 2) return pts;
+  const out: Pt[] = [];
+  const seg = (a: Pt, b: Pt): number => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  for (let i = 0; i < pts.length; i++) {
+    const b = pts[i];
+    if (!closed && (i === 0 || i === pts.length - 1)) { out.push(b); continue; }
+    const a = pts[(i - 1 + pts.length) % pts.length];
+    const c = pts[(i + 1) % pts.length];
+    const la = seg(a, b), lc = seg(b, c);
+    if (la < 0.01 || lc < 0.01) { out.push(b); continue; }
+    const trim = Math.min(radius, la * 0.3, lc * 0.3);
+    const enter: Pt = [b[0] + (a[0] - b[0]) * (trim / la), b[1] + (a[1] - b[1]) * (trim / la)];
+    const exit: Pt = [b[0] + (c[0] - b[0]) * (trim / lc), b[1] + (c[1] - b[1]) * (trim / lc)];
+    for (let j = 0; j <= 6; j++) {
+      const t = j / 6;
+      const m1x = enter[0] + (b[0] - enter[0]) * t, m1y = enter[1] + (b[1] - enter[1]) * t;
+      const m2x = b[0] + (exit[0] - b[0]) * t, m2y = b[1] + (exit[1] - b[1]) * t;
+      out.push([m1x + (m2x - m1x) * t, m1y + (m2y - m1y) * t]);
+    }
+  }
+  if (closed) out.push([...out[0]]);
+  return out;
+}
+
+/** 等距重采样 */
+function resamplePath(pts: Pt[], spacing: number): Pt[] {
+  const out: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    const steps = Math.max(1, Math.ceil(seg / spacing));
+    for (let j = 1; j <= steps; j++) {
+      out.push([pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * (j / steps), pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * (j / steps)]);
+    }
+  }
+  return out;
+}
+
+interface SampledRoute { pts: Pt[]; cum: number[]; length: number; closed: boolean }
+
+function buildRoute(pts: Pt[], closed: boolean): SampledRoute {
+  const rounded = roundPath(pts, closed, 6);
+  const rs = resamplePath(rounded, 2.5);
+  const cum = [0];
+  for (let i = 1; i < rs.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(rs[i][0] - rs[i - 1][0], rs[i][1] - rs[i - 1][1]));
+  }
+  return { pts: rs, cum, length: cum[cum.length - 1], closed };
+}
+
+/** 二分查找按距离取位（含切线） */
+function sampleRouteAt(r: SampledRoute, dist: number): { x: number; y: number; tx: number; ty: number } {
+  let d = r.closed ? ((dist % r.length) + r.length) % r.length : Math.max(0, Math.min(r.length, dist));
+  let lo = 0, hi = r.pts.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (r.cum[mid] <= d) lo = mid; else hi = mid;
+  }
+  const a = r.pts[lo], b = r.pts[hi];
+  const segLen = r.cum[hi] - r.cum[lo];
+  const t = segLen > 0 ? (d - r.cum[lo]) / segLen : 0;
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const norm = Math.hypot(dx, dy) || 1;
+  return { x: a[0] + dx * t, y: a[1] + dy * t, tx: dx / norm, ty: dy / norm };
+}
+
+// ---- 主体 ----
 
 export function buildTraffic(
   parent: THREE.Object3D,
@@ -54,7 +128,7 @@ export function buildTraffic(
     }
     return false;
   };
-  // 人流热点：教学区/图书馆/综合楼/食堂周边按"圈内长度占比"加权投放
+  // 人流热点：按"路径圈内长度占比"加权
   const segHotLen = (a: Pt, b: Pt): number => {
     let hot = 0;
     const seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -71,7 +145,8 @@ export function buildTraffic(
   };
 
   // ---- 行人路径：步道（环湖与热点加权）----
-  const walkPaths: WalkerPath[] = [];
+  interface WalkSrc { pts: Pt[]; len: number; lake: boolean }
+  const walkPaths: WalkSrc[] = [];
   for (const r of opts.roads) {
     if (!WALK_KINDS.has(r.kind) || r.pts.length < 2) continue;
     const len = polylineLen(r.pts);
@@ -82,18 +157,18 @@ export function buildTraffic(
     const copies = 1 + (lake ? 1 : 0) + Math.min(9, Math.round((hotLen / len) * 9));
     for (let c = 0; c < copies; c++) walkPaths.push({ pts: r.pts, len, lake });
   }
-  // 热点周边的车行路也上人（食堂/教学楼前路面，如上下课人流）
+  // 热点周边的车行路也上人（上下课/就餐过路）
   for (const r of opts.roads) {
     if (!DRIVE_KINDS.has(r.kind) || r.pts.length < 2) continue;
     const len = polylineLen(r.pts);
     if (len < 40) continue;
     let hotLen = 0;
     for (let i = 0; i < r.pts.length - 1; i++) hotLen += segHotLen(r.pts[i], r.pts[i + 1]);
-    if (hotLen < len * 0.3) continue; // 只有主要在热点内的车行路才人行化
+    if (hotLen < len * 0.3) continue;
     const copies = 1 + Math.min(6, Math.round((hotLen / len) * 7));
     for (let c = 0; c < copies; c++) walkPaths.push({ pts: r.pts, len, lake: false });
   }
-  // 热点环楼步道：楼外围 9m 绕楼一圈（楼前广场人流形态，不依赖 OSM 路网密度）
+  // 热点环楼步道（楼前广场人流形态）
   for (const h of opts.hotspots ?? []) {
     const x0 = h.x - h.hw - 9, x1 = h.x + h.hw + 9, y0 = h.y - h.hd - 9, y1 = h.y + h.hd + 9;
     const ring: Pt[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
@@ -101,13 +176,14 @@ export function buildTraffic(
     for (let c = 0; c < 10; c++) walkPaths.push({ pts: ring, len, lake: false });
   }
   // ---- 车行路径：校内车行路（较长者为骨架）----
-  const drivePaths: VehiclePath[] = [];
+  interface DriveSrc { pts: Pt[]; len: number }
+  const drivePaths: DriveSrc[] = [];
   for (const r of opts.roads) {
     if (!DRIVE_KINDS.has(r.kind) || r.pts.length < 2) continue;
     const len = polylineLen(r.pts);
     if (len < 120) continue;
     const c = r.pts[Math.floor(r.pts.length / 2)];
-    if (Math.abs(c[0]) > 900 || Math.abs(c[1]) > 900) continue; // 排除远外围公路
+    if (Math.abs(c[0]) > 900 || Math.abs(c[1]) > 900) continue;
     drivePaths.push({ pts: r.pts, len });
   }
   const lakeDrive = drivePaths.filter((p) => p.pts.some((q) => nearLake(q[0], q[1])));
@@ -123,17 +199,16 @@ export function buildTraffic(
 
   const WALKER_TOTAL = 480;
   const walkers = new THREE.InstancedMesh(walkerGeo, walkerMat, WALKER_TOTAL);
-  interface WalkerState { path: WalkerPath; t: number; dir: 1 | -1; speed: number; color: number; bob: number; side: number }
-  const walkerStates: WalkerState[] = [];
+  interface ActorState { route: SampledRoute; phase: number; dir: 1 | -1; speed: number; side: number; bob?: number; tint?: number }
+  const walkerStates: ActorState[] = [];
   for (let i = 0; i < WALKER_TOTAL; i++) {
     const pool = walkPaths.length ? walkPaths : drivePaths;
-    const path = pool[Math.floor(rng() * pool.length)];
+    const src = pool[Math.floor(rng() * pool.length)];
     walkerStates.push({
-      path: path as WalkerPath, t: rng(), dir: rng() < 0.5 ? 1 : -1,
-      speed: 0.9 + rng() * 0.6, color: WALKER_COLORS[Math.floor(rng() * WALKER_COLORS.length)], bob: rng() * 10,
-      side: (rng() - 0.5) * 2.6, // 横向散布，避免单列行进
+      route: buildRoute(src.pts, false), phase: rng(), dir: rng() < 0.5 ? 1 : -1,
+      speed: 0.9 + rng() * 0.6, side: (rng() - 0.5) * 2.6, bob: rng() * 10,
     });
-    walkers.setColorAt(i, new THREE.Color(walkerStates[i].color));
+    walkers.setColorAt(i, new THREE.Color(WALKER_COLORS[Math.floor(rng() * WALKER_COLORS.length)]));
   }
   walkers.castShadow = false;
   group.add(walkers);
@@ -159,18 +234,17 @@ export function buildTraffic(
   const cartMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.1 });
   const CART_TOTAL = 24;
   const carts = new THREE.InstancedMesh(cartGeo, cartMat, CART_TOTAL);
-  interface VehicleState { path: VehiclePath; t: number; dir: 1 | -1; speed: number; tint: number; side: number }
-  const cartStates: VehicleState[] = [];
+  const cartStates: ActorState[] = [];
   const cartPool = lakeDrive.length ? [...lakeDrive, ...lakeDrive, ...drivePaths] : drivePaths;
   for (let i = 0; i < CART_TOTAL; i++) {
-    const path = cartPool[Math.floor(rng() * cartPool.length)];
-    cartStates.push({ path, t: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 4.2 + rng() * 1.2, tint: rng() < 0.82 ? 0xf7f7f4 : 0xe8e2d4, side: 0 });
-    carts.setColorAt(i, new THREE.Color(cartStates[i].tint));
+    const src = cartPool[Math.floor(rng() * cartPool.length)];
+    cartStates.push({ route: buildRoute(src.pts, false), phase: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 4.2 + rng() * 1.2, side: 0, tint: rng() < 0.82 ? 0xf7f7f4 : 0xe8e2d4 });
+    carts.setColorAt(i, new THREE.Color(cartStates[i].tint!));
   }
   carts.castShadow = false;
   group.add(carts);
 
-  // ---- 大客车（校车）1-2 辆：发车间隔大、只在主环路慢速巡航 ----
+  // ---- 大客车（校车）1-2 辆：主环路慢速 ----
   function coach(): THREE.BufferGeometry {
     const parts: THREE.BufferGeometry[] = [];
     const body = new THREE.BoxGeometry(2.4, 2.5, 9.4); body.translate(0, 1.55, 0); parts.push(body);
@@ -187,80 +261,88 @@ export function buildTraffic(
   const coachMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 });
   const COACH_TOTAL = 2;
   const coaches = new THREE.InstancedMesh(coachGeo, coachMat, COACH_TOTAL);
-  const coachStates: VehicleState[] = [];
+  const coachStates: ActorState[] = [];
   const coachPool = drivePaths.filter((p) => p.len > 260);
   for (let i = 0; i < COACH_TOTAL && coachPool.length; i++) {
-    const path = coachPool[Math.floor(rng() * coachPool.length)];
-    coachStates.push({ path, t: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 6.5, tint: 0xf2f4f6, side: 0 });
-    coaches.setColorAt(i, new THREE.Color(coachStates[i].tint));
+    const src = coachPool[Math.floor(rng() * coachPool.length)];
+    coachStates.push({ route: buildRoute(src.pts, false), phase: rng(), dir: rng() < 0.5 ? 1 : -1, speed: 6.5, side: 0, tint: 0xf2f4f6 });
+    coaches.setColorAt(i, new THREE.Color(coachStates[i].tint!));
   }
   coaches.castShadow = false;
   group.add(coaches);
 
-  // ---- 沿折线取位 ----
-  function at(pathPts: Pt[], total: number, dist: number, dir: 1 | -1, forward: THREE.Vector3): Pt {
-    let rest = dist % total; if (rest < 0) rest += total;
-    if (dir === -1) rest = total - rest;
-    for (let i = 0; i < pathPts.length - 1; i++) {
-      const seg = Math.hypot(pathPts[i + 1][0] - pathPts[i][0], pathPts[i + 1][1] - pathPts[i][1]);
-      if (rest <= seg || i === pathPts.length - 2) {
-        const t = seg ? Math.min(1, rest / seg) : 0;
-        const x = pathPts[i][0] + (pathPts[i + 1][0] - pathPts[i][0]) * t;
-        const y = pathPts[i][1] + (pathPts[i + 1][1] - pathPts[i][1]) * t;
-        forward.set(pathPts[i + 1][0] - pathPts[i][0], 0, -(pathPts[i + 1][1] - pathPts[i][1]));
-        if (forward.lengthSq() > 1e-8) forward.normalize();
-        return [x, y];
-      }
-      rest -= seg;
-    }
-    return pathPts[pathPts.length - 1];
-  }
+  // ---- 推进与放置 ----
+  const controls: TrafficControls = { walkers: true, vehicles: true, playing: true };
+  let phase: "day" | "dusk" | "night" = "day";
+  let elapsed = 0;
+  let lastWrite = 0;
+  let wroteWhilePaused = false;
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
   const v = new THREE.Vector3();
-  const s = new THREE.Vector3(1, 1, 1);
-  const fwd = new THREE.Vector3();
+  const s0 = new THREE.Vector3(0, 0, 0);
+  const s1 = new THREE.Vector3(1, 1, 1);
 
-  function place(mesh: THREE.InstancedMesh, states: { path: { pts: Pt[]; len: number }; t: number; dir: 1 | -1; speed: number; bob?: number; side: number }[], dt: number, isWalker: boolean): void {
+  function placeMesh(mesh: THREE.InstancedMesh, states: ActorState[], isWalker: boolean, visible: boolean): void {
     let n = 0;
     for (const st of states) {
       if (n >= mesh.count) break;
-      st.t += (st.speed * dt) / st.path.len;
-      if (st.t > 1) st.t -= 1;
-      const [x, y] = at(st.path.pts, st.path.len, st.t * st.path.len, st.dir, fwd);
-      if (st.dir === -1) fwd.negate(); // 逆行时朝向反转
-      // 横向偏移：行人随机散布；车辆靠右行驶（dir*1.1m）
-      const side = isWalker ? st.side : st.dir * 1.1;
-      const px = x - fwd.z * side;
-      const py = y + fwd.x * side;
-      const yaw = Math.atan2(fwd.x, fwd.z);
-      e.set(0, yaw, 0); q.setFromEuler(e);
-      const bob = isWalker && st.bob !== undefined ? Math.abs(Math.sin(st.t * st.path.len * 1.6 + st.bob)) * 0.045 : 0;
+      const route = st.route;
+      // dir=-1 的实体：反向行进 = 反向距离
+      let dist = (st.phase * route.length + elapsed * st.speed) % route.length;
+      if (dist < 0) dist += route.length;
+      if (st.dir === -1) dist = route.length - dist;
+      // 开环路径端点 8m 内不显示（避免走到断头处凭空消失）
+      if (!visible || (!route.closed && (dist < 8 || dist > route.length - 8))) {
+        m.compose(v.set(0, -50, 0), q.identity(), s0);
+        mesh.setMatrixAt(n, m); n++; continue;
+      }
+      const cur = sampleRouteAt(route, dist);
+      // 侧向偏移：行人随机散布；车辆靠右 1.1m（世界 z=-y）
+      const px = cur.x + cur.ty * st.side;
+      const py = cur.y - cur.tx * st.side;
+      e.set(0, Math.atan2(cur.tx, -cur.ty), 0);
+      q.setFromEuler(e);
+      const bob = isWalker && st.bob !== undefined ? Math.abs(Math.sin(dist * 0.55 + st.bob)) * 0.045 : 0;
       v.set(px, bob, -py);
-      m.compose(v, q, s);
+      m.compose(v, q, s1);
       mesh.setMatrixAt(n, m);
       n++;
     }
-    mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
   }
 
-  let phase: "day" | "dusk" | "night" = "day";
-  const fullWalker = walkerStates.length;
   return {
     group,
+    setControls(next: TrafficControls): void {
+      const wasPlaying = controls.playing;
+      Object.assign(controls, next);
+      if (!wasPlaying && controls.playing) wroteWhilePaused = false; // 恢复后强制重写
+    },
+    setPhase(next: "day" | "dusk" | "night"): void {
+      phase = next;
+      wroteWhilePaused = false;
+    },
     update(dt: number): void {
-      // 行人密度按昼夜（夜 35%）；车流（夜 50%）
-      const walkerCount = phase === "night" ? Math.floor(fullWalker * 0.35) : phase === "dusk" ? Math.floor(fullWalker * 0.8) : fullWalker;
-      const cartCount = phase === "night" ? Math.floor(CART_TOTAL * 0.5) : CART_TOTAL;
+      if (controls.playing) elapsed += dt;
+      // 30fps 节流；暂停且已写帧则跳过
+      const now = performance.now();
+      if (!controls.playing && wroteWhilePaused) return;
+      if (controls.playing && now - lastWrite < 33) return;
+      lastWrite = now;
+      wroteWhilePaused = !controls.playing;
+      const walkerCount = controls.walkers
+        ? (phase === "night" ? Math.floor(WALKER_TOTAL * 0.35) : phase === "dusk" ? Math.floor(WALKER_TOTAL * 0.8) : WALKER_TOTAL)
+        : 0;
+      const cartCount = controls.vehicles ? (phase === "night" ? Math.floor(CART_TOTAL * 0.5) : CART_TOTAL) : 0;
       walkers.count = walkerCount;
       carts.count = cartCount;
-      place(walkers, walkerStates.slice(0, walkerCount), dt, true);
-      place(carts, cartStates.slice(0, cartCount), dt, false);
-      place(coaches, coachStates, dt, false);
+      coaches.count = controls.vehicles ? COACH_TOTAL : 0;
+      placeMesh(walkers, walkerStates.slice(0, walkerCount), true, controls.walkers);
+      placeMesh(carts, cartStates.slice(0, cartCount), false, controls.vehicles);
+      placeMesh(coaches, coachStates, false, controls.vehicles);
     },
-    setPhase(next: "day" | "dusk" | "night"): void { phase = next; },
   };
 }
