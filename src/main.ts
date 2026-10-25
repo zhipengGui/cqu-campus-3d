@@ -208,7 +208,7 @@ async function loadLandmarkGLB(asset: string, b: Building): Promise<THREE.Group 
   if (!GLB_LANDMARKS.has(asset)) return null;
   const priority = PRIORITY_ASSETS.has(asset);
   try {
-    const gltf = await gltfLoader.loadAsync("models/" + asset + (priority ? ".far" : "") + ".glb?v=16");
+    const gltf = await gltfLoader.loadAsync("models/" + asset + (priority ? ".far" : "") + ".glb?v=17");
     const root = new THREE.Group();
     const [cx, cy] = bboxCenterOfBuilding(b);
     root.position.set(cx, 0, -cy); root.name = b.name;
@@ -230,7 +230,7 @@ function updateDetailAssets(): void {
     if (entry.near) { if(entry.near.visible!==close)shadowDirty=true;entry.near.visible = close; entry.far.visible = !close; }
     else if (close && !entry.requested) {
       entry.requested = true;
-      void gltfLoader.loadAsync("models/" + entry.asset + ".glb?v=16").then((gltf) => {
+      void gltfLoader.loadAsync("models/" + entry.asset + ".glb?v=17").then((gltf) => {
         entry.near = gltf.scene; tagAsset(gltf.scene, entry.building, entry.root);
         entry.root.add(gltf.scene);
         shadowDirty=true;
@@ -242,7 +242,7 @@ function updateDetailAssets(): void {
 function loadGateGLB(asset: string, gate: Gate): Promise<THREE.Group | null> {
   return new Promise((resolve) => {
     gltfLoader.load(
-      "models/" + asset + ".glb?v=16",
+      "models/" + asset + ".glb?v=17",
       (gltf) => {
         const g = gltf.scene;
         g.position.set(gate.x, 0, -gate.y);
