@@ -1462,7 +1462,7 @@ document.querySelector("#flag-copy")!.addEventListener("click", () => {
 document.querySelector("#flag-issue")!.addEventListener("click", () => {
   const body = flagIssueBody();
   const title = encodeURIComponent(`地图纠错：${lastFlag?.near ?? "未命名位置"}`);
-  const url = `https://github.com/zhipengGui/cqu-huxi-campus-3d/issues/new?title=${title}&body=${encodeURIComponent(body)}`;
+  const url = `https://github.com/zhipengGui/cqu-campus-3d/issues/new?title=${title}&body=${encodeURIComponent(body)}`;
   window.open(url, "_blank");
   document.querySelector<HTMLElement>("#flag-dialog")!.hidden = true;
   setFlagMode(false);

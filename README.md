@@ -2,13 +2,13 @@
 
 在浏览器中漫游虎溪校园，探索教学楼、图书馆、湖泊与运动场地。这是一张支持旋转、缩放和交互导览的三维校园地图，可通过电脑或手机访问。
 
-**[打开地图 · 在线体验 →](https://zhipenggui.github.io/cqu-huxi-campus-3d/)**
+**[打开地图 · 在线体验 →](https://zhipenggui.github.io/cqu-campus-3d/)**
 
-> ⚠️ **版权声明**：本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利。**不得复制、修改或再发布本项目代码**（包括完整或部分）；如需使用，请[开 Issue 联系作者](https://github.com/zhipengGui/cqu-huxi-campus-3d/issues/new?template=request-license.md)获取授权。
+> ⚠️ **版权声明**：本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利。**不得复制、修改或再发布本项目代码**（包括完整或部分）；如需使用，请[开 Issue 联系作者](https://github.com/zhipengGui/cqu-campus-3d/issues/new?template=request-license.md)获取授权。
 >
 > All rights reserved © 2026 ZhipengGui. Do not copy, modify or redistribute this project (in whole or in part); open an issue to request a license.
 
-[项目源码](https://github.com/zhipengGui/cqu-huxi-campus-3d) · [反馈问题与建议](https://github.com/zhipengGui/cqu-huxi-campus-3d/issues)
+[项目源码](https://github.com/zhipengGui/cqu-campus-3d) · [反馈问题与建议](https://github.com/zhipengGui/cqu-campus-3d/issues)
 
 ![虎溪校区三维地图全景](docs/screenshots/v9-campus.png)
 
@@ -70,18 +70,18 @@ npm run dev
 npm run build
 ```
 
-产物位于 `dist/`。部署到子目录时，通过环境变量 `BASE_PATH` 设置站点路径；本项目 GitHub Pages 使用 `/cqu-huxi-campus-3d/`。
+产物位于 `dist/`。部署到子目录时，通过环境变量 `BASE_PATH` 设置站点路径；本项目 GitHub Pages 使用 `/cqu-campus-3d/`。
 
 本仓库提供可直接运行和构建的地图展示端、必要场景资源与前端测试。离线建模、场景制作工具及内部维护记录在本地单独维护，不是运行本项目的前提。
 
 ## 关于地图
 
-地图面向校园展示与探索，由现有地图轮廓、公开资料和参考照片共同构建。建筑细节、植被分布及部分场地尺寸包含示意或估算，欢迎通过 [Issues](https://github.com/zhipengGui/cqu-huxi-campus-3d/issues) 提供照片、位置校正和使用建议。
+地图面向校园展示与探索，由现有地图轮廓、公开资料和参考照片共同构建。建筑细节、植被分布及部分场地尺寸包含示意或估算，欢迎通过 [Issues](https://github.com/zhipengGui/cqu-campus-3d/issues) 提供照片、位置校正和使用建议。
 
 ## 致谢与许可
 
 - 项目的视觉表现与实现参考了 [gxu-campus-3d](https://github.com/wcqqq1214/gxu-campus-3d)。
-- 本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利：仅供学习与浏览，未经作者许可请勿复制、修改或再发布；如需使用请通过 [Issues](https://github.com/zhipengGui/cqu-huxi-campus-3d/issues) 联系作者。
+- 本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利：仅供学习与浏览，未经作者许可请勿复制、修改或再发布；如需使用请通过 [Issues](https://github.com/zhipengGui/cqu-campus-3d/issues) 联系作者。
 - All rights reserved © 2026 ZhipengGui. Code and models are provided for viewing and learning only; do not copy, modify or redistribute without the author's permission — open an issue to ask.
 - 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，遵循 ODbL。
 - 参考照片来自重庆大学公开图集，照片权利属于原权利人。
