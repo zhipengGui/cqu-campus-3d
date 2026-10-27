@@ -4,6 +4,10 @@
 
 **[打开地图 · 在线体验 →](https://zhipenggui.github.io/cqu-huxi-campus-3d/)**
 
+> ⚠️ **版权声明**：本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利。**不得复制、修改或再发布本项目代码**（包括完整或部分）；如需使用，请[开 Issue 联系作者](https://github.com/zhipengGui/cqu-huxi-campus-3d/issues/new?template=request-license.md)获取授权。
+>
+> All rights reserved © 2026 ZhipengGui. Do not copy, modify or redistribute this project (in whole or in part); open an issue to request a license.
+
 [项目源码](https://github.com/zhipengGui/cqu-huxi-campus-3d) · [反馈问题与建议](https://github.com/zhipengGui/cqu-huxi-campus-3d/issues)
 
 ![虎溪校区三维地图全景](docs/screenshots/v9-campus.png)

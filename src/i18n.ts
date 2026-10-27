@@ -158,7 +158,7 @@ export const D: Record<string, Pair> = {
     zh: "数据来源：OpenStreetMap（ODbL）· 重大官网图集 · 官方公示与校园平面图；部分新建建筑依卫星影像判读，高度与细部含估算。",
     en: "Data: OpenStreetMap (ODbL) · CQU official galleries · public notices and campus plans. Some new buildings were traced from satellite imagery; heights and details partly estimated.",
   },
-  aboutNote: { zh: "仅用于学习交流，建筑形态非测绘精度。", en: "For study and demonstration only — not survey-grade." },
+  aboutNote: { zh: "建筑形态非测绘精度。代码与模型版权归作者所有，未经许可请勿复制使用；如需使用请开 Issue 联系作者。", en: "Not survey-grade. Code and models are the author's property — do not copy without permission; open an issue to request a license." },
   aboutClose: { zh: "关闭", en: "Close" },
 
   toastExported: { zh: "图片已导出", en: "Image exported" },
