@@ -18,6 +18,8 @@ export class LabelLayer {
   private entries: Entry[] = [];
   enabled = true;
   active = "";
+  /** 全景压缩阈值（相机距目标超过则隐藏低优先级标签）；按校区尺寸自适应，虎溪默认 1700 */
+  overviewDistance = 1700;
   private lastUpdate = 0;
 
   constructor(container: HTMLElement) {
@@ -30,6 +32,13 @@ export class LabelLayer {
 
   setSize(w: number, h: number): void {
     this.renderer.setSize(w, h);
+  }
+
+  /** 校区切换清理：移除标注 DOM 层并释放条目 */
+  dispose(): void {
+    for (const e of this.entries) e.obj.element.remove();
+    this.entries = [];
+    this.renderer.domElement.remove();
   }
 
   add(
@@ -66,7 +75,7 @@ export class LabelLayer {
       ((b.text === this.active ? 100 : b.priority) - (a.text === this.active ? 100 : a.priority)) ||
       camera.position.distanceTo(a.pos)-camera.position.distanceTo(b.pos));
     let count = 0;
-    const overview=camera.position.distanceTo(target)>1700;
+    const overview=camera.position.distanceTo(target)>this.overviewDistance;
     for (const e of entries) {
       e.obj.element.classList.toggle('active',e.text===this.active);
       e.obj.visible = false;

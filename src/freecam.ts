@@ -9,8 +9,10 @@ import { cancelFly } from "./flyTo";
  *  + Shift 加速 + 滚轮调速。带建筑高度碰撞（可飞越楼顶）与模型范围边界。
  *  指针锁定走共享 SharedPointerLock（owner 制）。 */
 
-const EDGE = { x0: -1515, x1: 1604, y0: -1352, y1: 1659 }; // 模型范围（含熙街/医院/周边）
-const Y_MIN = 2, Y_MAX = 1600; // 上限涵盖 home 全景机位（~1450m），进入时不跳变
+export interface FlyBounds {
+  x0: number; x1: number; y0: number; y1: number; // 地图米坐标
+  yMin: number; yMax: number; // 飞行高度区间
+}
 
 export interface FreeCamEvents {
   onSpeed?(speed: number): void;
@@ -33,8 +35,9 @@ export class FreeCam implements LockOwner {
   /** 移动端注入：摇杆归一化向量（屏幕系：x 右 / y 上）与升降开关 */
   mobileInput:{x:number;y:number;up:boolean;down:boolean}={x:0,y:0,up:false,down:false};
 
-  constructor(camera:THREE.PerspectiveCamera,orbit:OrbitControls,world:FlyWorld,lock:SharedPointerLock,events:FreeCamEvents={}) {
-    this.camera=camera;this.orbit=orbit;this.world=world;this.lock=lock;this.events=events;
+  readonly bounds:FlyBounds;
+  constructor(camera:THREE.PerspectiveCamera,orbit:OrbitControls,world:FlyWorld,lock:SharedPointerLock,bounds:FlyBounds,events:FreeCamEvents={}) {
+    this.camera=camera;this.orbit=orbit;this.world=world;this.lock=lock;this.bounds=bounds;this.events=events;
     document.addEventListener('keydown',e=>{
       if(!this.active)return;
       if(['KeyW','KeyA','KeyS','KeyD','Space','KeyC','ControlLeft','ControlRight','ShiftLeft','ShiftRight'].includes(e.code)){
@@ -57,9 +60,11 @@ export class FreeCam implements LockOwner {
     const damping=o.enableDamping;o.enableDamping=false;o.update();o.enableDamping=damping;o.enabled=false;
     this.active=true;this.lockDegraded=false;this.keys.clear();c.clearViewOffset();
     // 起点一次性钳入边界（如从 home 高远景进入），避免首帧移动时跳变
-    c.position.x=Math.max(EDGE.x0+2,Math.min(EDGE.x1-2,c.position.x));
-    c.position.z=Math.max(-EDGE.y1+2,Math.min(-EDGE.y0-2,c.position.z));
-    c.position.y=Math.max(Y_MIN,Math.min(Y_MAX,c.position.y));
+    const B=this.bounds;
+    c.position.x=Math.max(B.x0+2,Math.min(B.x1-2,c.position.x));
+    c.position.z=Math.max(-B.y1+2,Math.min(-B.y0-2,c.position.z));
+    const floor=this.world.heightAt?.(c.position.x,-c.position.z)??0;
+    c.position.y=Math.max(B.yMin+floor,Math.min(B.yMax,c.position.y));
     this.lock.request(this);
     return true;
   }
@@ -115,15 +120,17 @@ export class FreeCam implements LockOwner {
       // moved 是地图 y 系位移，世界 z=-y：Δz = -Δy
       let nx=c.position.x+moved[0],ny=c.position.y+step.y,nz=c.position.z-moved[1];
       // 高度与边界
-      ny=Math.max(Y_MIN,Math.min(Y_MAX,ny));
-      const beyond=nx<EDGE.x0||nx>EDGE.x1||nz<-EDGE.y1||nz>-EDGE.y0;
+      const B=this.bounds;
+      ny=Math.min(B.yMax,ny);
+      const beyond=nx<B.x0||nx>B.x1||nz<-B.y1||nz>-B.y0;
       if(beyond){
-        nx=Math.max(EDGE.x0+1,Math.min(EDGE.x1-1,nx));
-        nz=Math.max(-EDGE.y1+1,Math.min(-EDGE.y0-1,nz));
+        nx=Math.max(B.x0+1,Math.min(B.x1-1,nx));
+        nz=Math.max(-B.y1+1,Math.min(-B.y0-1,nz));
         const now=performance.now();
         if(now-this.edgeToastAt>2500){this.edgeToastAt=now;this.events.onEdge?.();}
       }
-      c.position.set(nx,ny,nz);
+      const floor=this.world.heightAt?.(nx,-nz)??0;
+      c.position.set(nx,Math.max(B.yMin+floor,ny),nz);
     }
     // OrbitControls 兼容：把 target 放在视线前方（部分依赖 target 的逻辑用）
     this.orbit.target.copy(c.position).addScaledVector(c.getWorldDirection(new THREE.Vector3()),10);

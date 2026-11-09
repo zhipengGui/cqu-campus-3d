@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { SceneData } from "./types";
 import type { SearchItem } from "./search";
+import type { CampusMapPoint } from "./campuses/types";
 import { bboxCenter } from "./sceneBuilder";
 import {sportsSiteAreas,sportsFrame} from './sports';
 import { GROUP_LABEL, getLang, localName, tr } from "./i18n";
@@ -35,11 +36,13 @@ function groupOfStyle(style: string): string {
 export function collectPlaces(
   data: SceneData,
   meshByName: Map<string, THREE.Mesh>,
+  mapPoints: readonly CampusMapPoint[] = [],
 ): PlaceEntry[] {
   const entries: PlaceEntry[] = [];
   // 有名字的楼（同名取第一个 mesh）
   for (const [name, mesh] of meshByName) {
     const d = mesh.userData as {
+      type: string;
       style: string;
       height: number;
       area: number;
@@ -49,8 +52,8 @@ export function collectPlaces(
     const radius = Math.sqrt(d.area / Math.PI);
     entries.push({
       name,
-      kind: "building",
-      group: groupOfStyle(d.style),
+      kind: d.type === "gate" ? "gate" : "building",
+      group: d.type === "gate" ? "校门" : groupOfStyle(d.style),
       num: "",
       target: new THREE.Vector3(d.cx, d.height / 2, d.cy),
       distance: Math.max(150, radius * 3.4),
@@ -87,6 +90,17 @@ export function collectPlaces(
     entries.push({name,kind:'sports',group:'运动',num:'',target:new THREE.Vector3(f.cx,0,-f.cy),
       distance:300,extent:{width:f.width,length:f.length}});
   }
+  for (const { name, kind, point: [x, y] } of mapPoints) {
+    entries.push({
+      name,
+      kind,
+      group: kind === "gate" ? "校门" : "文体",
+      num: "",
+      target: new THREE.Vector3(x, 0, -y),
+      distance: 170,
+    });
+  }
+
   // 优先展示重点地标，再按中文序排列，编号仍连续。
   const out: PlaceEntry[] = [];
   let num = 1;

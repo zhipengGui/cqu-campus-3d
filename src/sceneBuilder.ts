@@ -478,6 +478,7 @@ function dormRoofParts(poly: [number, number][], height: number): {
 function dormFacadeDetails(
   b: Building,
   geos: { frame: THREE.BufferGeometry[]; glass: THREE.BufferGeometry[]; glassLit: THREE.BufferGeometry[]; balcony: THREE.BufferGeometry[]; door: THREE.BufferGeometry[] },
+  base: number,
 ): void {
   // 统一 CCW（外法向 = (uy,-ux)；OSM 轮廓绕向混杂，CW 楼的窗会嵌墙）
   let poly = b.polygon;
@@ -492,7 +493,7 @@ function dormFacadeDetails(
   const box = (cx: number, cy: number, cz: number, w: number, h: number, d: number, angle: number) => {
     const g = new THREE.BoxGeometry(w, h, d);
     g.rotateY(angle);
-    g.translate(cx, cz, -cy);
+    g.translate(cx, cz + base, -cy);
     return g;
   };
   for (let i = 0; i < poly.length; i++) {
@@ -533,7 +534,7 @@ function dormFacadeDetails(
 }
 
 /** 楼栋：立面纹理 + 女儿墙 + 屋顶设备块。landmark 楼由调用方过滤后另行构建。 */
-export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE.Group {
+export function buildBuildings(scene: THREE.Scene, buildings: Building[], baseOf: (building: Building) => number = () => 0): THREE.Group {
   const group = new THREE.Group();
   group.name = "buildings";
   const parapetGeos: THREE.BufferGeometry[] = [];
@@ -543,6 +544,7 @@ export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE
   const dormParts = { frame: [] as THREE.BufferGeometry[], glass: [] as THREE.BufferGeometry[], glassLit: [] as THREE.BufferGeometry[], balcony: [] as THREE.BufferGeometry[], door: [] as THREE.BufferGeometry[] };
 
   for (const b of buildings) {
+    const base = baseOf(b);
     const shape = shapeFromRings(b.polygon, b.holes);
     const geo = new THREE.ExtrudeGeometry(shape, {
       depth: Math.max(b.height, 2),
@@ -562,12 +564,18 @@ export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE
     glow.repeat.set(1, floors);
     const wallMat = new THREE.MeshLambertMaterial({ map: tex, emissiveMap: glow });
     wallMat.emissive.setHex(0x000000);
+    const isRing = (b as Building).tier === "ring";
+    if (isRing) {
+      wallMat.color.setHex(0x9aa0a6); // 周边居民楼等：降饱和灰调（仍正常体块渲染）
+      wallMat.emissiveMap = null; // 环级无窗灯夜景
+    }
     const tint = STYLE_TINT[style] ?? [1, 1, 1];
     const lum = 0.93 + hash01(b.id) * 0.09;
     wallMat.color.setRGB(tint[0] * lum, tint[1] * lum, tint[2] * lum);
 
     // ExtrudeGeometry 分组：material 0 = 顶底面，1 = 侧面
     const mesh = new THREE.Mesh(geo, [roofMaterial, wallMat]);
+    mesh.position.y = base;
     const [cx, cy] = bboxCenter(b.polygon);
     mesh.userData = {
       id: b.id,
@@ -584,19 +592,20 @@ export function buildBuildings(scene: THREE.Scene, buildings: Building[]): THREE
     mesh.receiveShadow = true;
     group.add(mesh);
 
-    const pitched = style === "dorm" ? dormRoofParts(b.polygon, b.height) : null;
+    const roofHeight = b.height + base;
+    const pitched = style === "dorm" ? dormRoofParts(b.polygon, roofHeight) : null;
     if (!pitched && b.area >= 80) {
-      const pg = parapetGeometry(b.polygon, b.height);
+      const pg = parapetGeometry(b.polygon, roofHeight);
       if (pg) parapetGeos.push(pg);
     }
     if (!pitched && b.area >= 1200) {
       const n = Math.max(1, Math.min(6, Math.floor(b.area / 900)));
-      addRoofUnits(unitGeos, b, n);
+      addRoofUnits(unitGeos, b, n, base);
     }
     if (pitched) {
       for (const r of pitched.roofs) dormRoofGeos[dormRoofKindOf(b.name)].push(r);
       dormGableGeos.push(...pitched.gables);
-      dormFacadeDetails(b, dormParts);
+      dormFacadeDetails(b, dormParts, base);
     }
   }
   scene.add(group);
@@ -652,7 +661,7 @@ function parapetGeometry(poly: [number, number][], height: number): THREE.Buffer
   return geo;
 }
 
-function addRoofUnits(geos: THREE.BufferGeometry[], b: Building, n: number): void {
+function addRoofUnits(geos: THREE.BufferGeometry[], b: Building, n: number, base: number): void {
   const [cx, cy] = bboxCenter(b.polygon);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const [x, y] of b.polygon) {
@@ -669,7 +678,7 @@ function addRoofUnits(geos: THREE.BufferGeometry[], b: Building, n: number): voi
     const sx = 1.8 + idHash01(`${b.id}s${i}`) * 2.2;
     const sy = 1.2 + idHash01(`${b.id}t${i}`) * 1.4;
     const g = new THREE.BoxGeometry(sx, sy, sx);
-    g.translate(px, b.height + sy / 2, -py);
+    g.translate(px, base + b.height + sy / 2, -py);
     geos.push(g);
   }
 }

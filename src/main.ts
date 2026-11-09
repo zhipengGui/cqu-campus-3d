@@ -3,7 +3,14 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { skyTexture, skyMeta } from "./skyGradient";
 import { boundsOf, frameBox, framePoints, placeRoot } from "./landmarkViews";
-import { clipRoads, campusAreas } from "./campusClip";
+import { clipRoads, campusAreas, inCampus } from "./campusClip";
+import { createTerrain, subdividePath, type Terrain, type TerrainGrid } from "./terrain";
+import { buildTerrainGround, buildFoundations, drapeSurfaces, liftPlants } from "./terrainMeshes";
+import { buildCampusAVenues, prepareVenueTerrain, VENUE_SPOTS, venueBuildings, venuePlantExclusions } from "./aCampusVenues";
+import { buildHeritageBuilding, FIFTH_ID, HERITAGE_NAMES, prepareHeritageTerrain, WENZI_ID } from "./aCampusHeritage";
+import { BATCH_INFO, BATCH_SPOTS, batchBuildings, batchSpot, buildBatchBuilding, mainTeachingDetails, prepareBatchTerrain } from "./aCampusLandmarkBatch";
+import { BATCH2_INFO, BATCH2_SPOTS, batch2Buildings, batch2Spot, buildBatch2Building, prepareBatch2Terrain } from "./aCampusLandmarkBatch2";
+import { BATCH4_SHORTCUTS, batch4Buildings, batch4Info, batch4Spec, buildBatch4Building } from "./aCampusLandmarkBatch4";
 import { buildContext } from "./context";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { SceneData, Building, Gate } from "./types";
@@ -20,11 +27,14 @@ import {
 } from "./sceneBuilder";
 import { buildTrees, type TreeSystem, type Season } from "./trees";
 import { buildVegetation, type VegetationSystem } from "./vegetation";
-import { streamLandmarkGLBs } from "./landmarkStream";
+import { disposeGroup, streamLandmarkGLBs } from "./landmarkStream";
 import { buildTraffic, type TrafficSystem, type TrafficControls } from "./traffic";
+import { buildOverview, type OverviewBuild } from "./overview";
 import { buildTourRoutes, type TourRoute } from "./tourRoutes";
 import { FreeCam } from "./freecam";
 import { SharedPointerLock } from "./pointerLock";
+import { campusFromUrl, CAMPUSES, type CampusConfig } from "./campuses";
+import { flyBoundsOf } from "./campuses/bounds";
 import { initOnboarding } from "./onboarding";
 import { cancelFly, flyTo, flyAlong } from "./flyTo";import { LabelLayer } from "./labels";
 import {
@@ -38,7 +48,7 @@ import { applyStaticI18n, getLang, localName, onLangChange, setLang, t, tr, type
 import { buildSportsMarks, sportsSiteAreas } from "./sports";
 import { Navigator } from "./navigation";
 import { collectPlaces, initPlacesPanel, type PlaceEntry, type PlacesPanel } from "./placesPanel";
-import { PLACE_INFO } from "./placesInfo";
+import { PLACE_INFO, REFINEMENT_INFO } from "./placesInfo";
 import { TOUR_STOPS } from "./tourStops";
 import { facadeTexture, roofMaterial } from "./facades";
 import {formatSharedView,parseSharedView,sharedDistanceScale} from './shareView';
@@ -58,6 +68,96 @@ let walking:Walking|null=null;
 let walkWorld:WalkWorld|null=null;
 let freeCam:FreeCam|null=null;
 let sharedLock:SharedPointerLock;
+let campus:CampusConfig = campusFromUrl(location.search);
+let activeTerrain: Terrain | null = null;
+let terrainGround: THREE.Group | null = null;
+let terrainAttribution = "";
+const corridorRequested = new URLSearchParams(location.search).get("terrain") === "corridor";
+const inCorridorPreview = () => corridorRequested && campus.id === "shapingba";
+const venuesRequested = new URLSearchParams(location.search).get("terrain") === "venues";
+const inVenuesPreview = () => venuesRequested && campus.id === "shapingba";
+const initialVenue = new URLSearchParams(location.search).get("venue") === "siqun" ? "思群广场" : "风雨操场";
+const heritageRequested = new URLSearchParams(location.search).get("terrain") === "heritage";
+const inHeritagePreview = () => heritageRequested && campus.id === "shapingba";
+const initialHeritage = new URLSearchParams(location.search).get("building") === "wenzi" ? HERITAGE_NAMES[1] : HERITAGE_NAMES[0];
+const isHeritageBuilding = (id: Building["id"]) => id === FIFTH_ID || id === WENZI_ID;
+const batchMode = new URLSearchParams(location.search).get("terrain") || "batch4";
+const inFourthPreview = () => batchMode === "batch4" && campus.id === "shapingba";
+const inThirdPreview = () => batchMode === "batch3" && campus.id === "shapingba";
+const inSecondPreview = () => batchMode === "batch2" && campus.id === "shapingba";
+const hasFourthBatch = inFourthPreview;
+const hasThirdBatch = () => inThirdPreview() || hasFourthBatch();
+const hasSecondBatch = () => inSecondPreview() || hasThirdBatch();
+const inBatchPreview = () => campus.id === "shapingba" && (batchMode === "batch1" || hasSecondBatch());
+const thirdSpots = [
+  { key:"fifth", name:HERITAGE_NAMES[0], label:"五教" },
+  { key:"wenzi", name:HERITAGE_NAMES[1], label:"文字斋" },
+  { key:"wind", name:VENUE_SPOTS[0].name, label:"风雨操场" },
+  { key:"siqun", name:VENUE_SPOTS[1].name, label:"思群广场" },
+] as const;
+const previewSpots = batchMode === "batch4" ? BATCH4_SHORTCUTS : batchMode === "batch3" ? thirdSpots
+  : batchMode === "batch2" ? BATCH2_SPOTS : BATCH_SPOTS;
+const initialBatch = previewSpots.find(s => s.key === new URLSearchParams(location.search).get("landmark")) ?? previewSpots[0];
+const replacesBatchBuilding = (id: Building["id"]) => !!batchSpot(id) && id !== 1556523865;
+const groundHeight = (x: number, y: number): number => activeTerrain?.heightAt(x, y) ?? 0;
+function lakeHeight(id: number | string, x: number, y: number): number {
+  return id === 569007995 ? 0 : groundHeight(x, y);
+}
+function updateCampusUrl(): void {
+  const url = new URL(location.href);
+  url.searchParams.set("campus", campus.id);
+  history.replaceState(null, "", url);
+}
+function renderCampusTitles(): void {
+  const en = getLang() === "en";
+  const name = en ? campus.nameEn : campus.nameZh;
+  const title = en ? `CQU · ${name} · 3D Map` : `重庆大学${name} 3D 地图`;
+  document.title = title;
+  document.querySelector("#brand")!.setAttribute("aria-label", title);
+  document.querySelector("#brand small")!.textContent = en ? `${name} · 3D Map` : `${name} · 三维校园地图`;
+  const hudTitle = tr(campus.hudTitle);
+  const terrainLabel = en ? "Terrain preview" : "地形预览";
+  document.querySelector("#hud-head .title")!.textContent = inFourthPreview()
+    ? (en ? "Explore Shapingba Campus A" : "探索沙坪坝 A 区")
+    : inThirdPreview()
+    ? (en ? "Campus A · Third refinement batch" : "A 区 · 第三批精修")
+    : inSecondPreview()
+    ? (en ? "Campus A · Second landmark batch" : "A 区 · 第二批地标")
+    : inBatchPreview()
+    ? (en ? "Campus A · First landmark batch" : "A 区 · 第一批地标")
+    : inHeritagePreview()
+    ? (en ? "Campus A · Fifth Building and Wenzi Zhai" : "A 区 · 第五教学楼与文字斋")
+    : inVenuesPreview()
+    ? (en ? "Campus A · Outdoor venues" : "A 区 · 风雨操场与思群广场")
+    : inCorridorPreview()
+    ? (en ? "Campus A · Dorm 9 to Film School" : "A 区 · 九舍至美视电影学院")
+    : activeTerrain ? hudTitle + " · " + terrainLabel : hudTitle;
+  const corridorNote = document.querySelector<HTMLElement>("#corridor-note")!;
+  corridorNote.hidden = !(inCorridorPreview() || inVenuesPreview() || inHeritagePreview() || inBatchPreview());
+  corridorNote.textContent = inFourthPreview() ? (en
+    ? "Campus landmarks and terrain · Building details and local grades are approximate"
+    : "校园地标与地形 · 建筑细节和局部标高为估算") : inThirdPreview() ? (en
+    ? "Four sites · Details from photographs · Steps and local grades are approximate"
+    : "第三批 4 处 · 按照片精修 · 台阶与局部地坪暂估") : inSecondPreview() ? (en
+    ? "Seven sites · Hall and pavilion placements and local grades are provisional"
+    : "第二批 7 处 · 礼堂与寅初亭落点、局部地坪暂估") : inBatchPreview() ? (en
+    ? "Seven landmarks · Photo-based models · Site dimensions are approximate"
+    : "第一批 7 处 · 按校方资料与影像建模 · 构件与地坪尺寸暂估") : inHeritagePreview() ? (en
+    ? "Rebuilt from university photographs · Dimensions are approximate"
+    : "按校方实拍重建 · 几何尺寸暂估") : inVenuesPreview() ? (en
+    ? "Photo-based venue preview · Step dimensions and elevations are approximate"
+    : "按实拍与航拍还原 · 台阶尺寸和标高暂估") : en
+    ? "Preview 01 · FABDEM 30 m · Pads are estimates. Gold marks show the DEM sampling road."
+    : "局部预览 01 · FABDEM 约 30 米 · 楼前平台标高暂估。金线为高程取样路段。";
+  const terrainSource = document.querySelector<HTMLElement>("#terrain-source")!;
+  terrainSource.hidden = !activeTerrain;
+  terrainSource.textContent = terrainAttribution;
+  document.querySelector("#about-title")!.textContent = title;
+  document.querySelector("#watermark")!.textContent = `${title} · zhipengGui`;
+}
+
+let searchApi:{setItems(next:import("./search").SearchItem[]):void}|null=null;
+const byName = new Map<string, THREE.Mesh>();
 let dragLook:{x:number;y:number;id:number}|null=null;
 
 // ---- 自由视角 ----
@@ -104,7 +204,7 @@ app.appendChild(renderer.domElement);
 renderer.domElement.tabIndex = 0;
 renderer.domElement.addEventListener("pointerdown", () => renderer.domElement.focus());
 
-const scene = new THREE.Scene();
+let scene = new THREE.Scene();
 // 程序化天空兼作背景与环境反射（skyGradient，dayNight 切换预设）
 scene.background = skyTexture("day");
 scene.environment = skyTexture("day");
@@ -139,7 +239,7 @@ sun.shadow.normalBias = .07;
 scene.add(sun);
 scene.add(sun.target);
 
-const labels = new LabelLayer(app);
+let labels = new LabelLayer(app);
 scene.add(labels.root);
 
 function resize(): void {
@@ -164,6 +264,10 @@ resize();
 
 const raycaster = new THREE.Raycaster();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function pickGround(ray: THREE.Raycaster): THREE.Vector3 | null {
+  if (terrainGround) return ray.intersectObject(terrainGround, true)[0]?.point ?? null;
+  return ray.ray.intersectPlane(groundPlane, new THREE.Vector3());
+}
 let downAt: [number, number] | null = null;
 renderer.domElement.addEventListener("pointerdown", (e) => {
   downAt = [e.clientX, e.clientY];
@@ -181,8 +285,8 @@ renderer.domElement.addEventListener("pointerup", (e) => {
     new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1),
     camera,
   );
-  const pt = new THREE.Vector3();
-  if (raycaster.ray.intersectPlane(groundPlane, pt)) routeNavigator.clickGround(pt.x, pt.z);
+  const pt = pickGround(raycaster);
+  if (pt) routeNavigator.clickGround(pt.x, pt.z);
 });
 
 // ---- 信息卡（已并入面板详情模式；此处仅保留导航面板状态）----
@@ -192,25 +296,25 @@ let routeNavigator: Navigator | null = null;
 let navMode = false;
 let panel: PlacesPanel | null = null;
 let places: PlaceEntry[] = [];
-let boundaryLine: THREE.LineLoop | null = null;
+const boundaryLines: THREE.LineLoop[] = [];
 let lastBuildingView = "overview";
 let selectedPlace:(import("./placesPanel").PlaceEntry)|null=null;
 
 // ---- 图层分组 ----
-const gGreen = new THREE.Group();
-const gSports = new THREE.Group();
-const gWater = new THREE.Group();
-const gRoads = new THREE.Group();
-const gTrees = new THREE.Group();
-const gTraffic = new THREE.Group();
+let gGreen = new THREE.Group();
+let gSports = new THREE.Group();
+let gWater = new THREE.Group();
+let gRoads = new THREE.Group();
+let gTrees = new THREE.Group();
+let gTraffic = new THREE.Group();
 gTraffic.name = "g-traffic";
-const gContext = new THREE.Group();
+let gContext = new THREE.Group();
 scene.add(gGreen, gSports, gWater, gRoads, gTrees, gTraffic, gContext);
 
 // ---- GLB ----
 const gltfLoader = new GLTFLoader();
-const GLB_LANDMARKS = new Set(["library", "info", "gym", "gongke", "activity", "zonghe", "teaching1", "likelou", "science", "canteen1", "canteen2", "canteen3", "hospital", "hospital_opd", "lab2", "lab3", "pharma", "pharma_rc", "gongpei", "xyiyuan"]);
-const PRIORITY_ASSETS = new Set(["zonghe", "teaching1", "info", "library", "likelou", "gym", "activity", "gongke", "science", "canteen1", "canteen2", "canteen3", "hospital", "hospital_opd", "lab2", "lab3", "pharma", "pharma_rc", "gongpei", "xyiyuan"]);
+let GLB_LANDMARKS = new Set(["library", "info", "gym", "gongke", "activity", "zonghe", "teaching1", "likelou", "science", "canteen1", "canteen2", "canteen3", "hospital", "hospital_opd", "lab2", "lab3", "pharma", "pharma_rc", "gongpei", "xyiyuan"]);
+let PRIORITY_ASSETS = new Set(["zonghe", "teaching1", "info", "library", "likelou", "gym", "activity", "gongke", "science", "canteen1", "canteen2", "canteen3", "hospital", "hospital_opd", "lab2", "lab3", "pharma", "pharma_rc", "gongpei", "xyiyuan"]);
 const draco = new DRACOLoader().setDecoderPath(import.meta.env.BASE_URL + "draco/");
 gltfLoader.setDRACOLoader(draco);
 const detailAssets: { root: THREE.Group; far: THREE.Group; asset: string; building: Building; near?: THREE.Group; requested: boolean }[] = [];
@@ -241,18 +345,61 @@ function tagAsset(g: THREE.Group, b: Building, root: THREE.Group): void {
   applyBuildingEmissive(g);
 }
 
-async function loadLandmarkGLB(asset: string, b: Building): Promise<THREE.Group | null> {
+function filmTheaterCupola(cx: number, cy: number): THREE.Group {
+  const cupola = new THREE.Group();
+  cupola.name = "film-theater-cupola";
+  // Official facade photos and aerial imagery establish the form and roof location. Dimensions are approximate.
+  cupola.position.set(302.5 - cx, 9.3, cy - 354.25);
+  const stone = new THREE.MeshLambertMaterial({ color: 0xe4dfd0 });
+  const glass = new THREE.MeshLambertMaterial({ color: 0x53666c });
+  const shell = new THREE.MeshLambertMaterial({ color: 0xb1aaa0 });
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(9.1, 9.1, 2.8, 32), stone);
+  drum.position.y = 1.4;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(9.1, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), shell);
+  dome.scale.y = 0.53;
+  dome.position.y = 2.8;
+  const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.85, 1.5, 12), stone);
+  lantern.position.y = 7.95;
+  cupola.add(drum, dome, lantern);
+  const opening = new THREE.BoxGeometry(1.2, 1.55, 0.14);
+  for (let i = 0; i < 12; i++) {
+    const angle = i * Math.PI / 6;
+    const window = new THREE.Mesh(opening, glass);
+    window.position.set(Math.sin(angle) * 9.11, 1.48, Math.cos(angle) * 9.11);
+    window.rotation.y = angle;
+    cupola.add(window);
+  }
+  return cupola;
+}
+
+async function loadLandmarkGLB(asset: string, b: Building, base: number): Promise<THREE.Group | null> {
   if (!GLB_LANDMARKS.has(asset)) return null;
   const priority = PRIORITY_ASSETS.has(asset);
+  const sourceScene = scene;
   try {
-    const gltf = await gltfLoader.loadAsync("models/" + asset + (priority ? ".far" : "") + ".glb?v=17");
+    const gltf = await gltfLoader.loadAsync(`${campus.modelDir}/` + asset + (priority ? ".far" : "") + ".glb?v=17");
+    if (sourceScene !== scene) {
+      disposeGroup(gltf.scene);
+      return null;
+    }
     const root = new THREE.Group();
     const [cx, cy] = bboxCenterOfBuilding(b);
-    root.position.set(cx, 0, -cy); root.name = b.name;
+    root.position.set(cx, base, -cy); root.name = b.name;
     root.add(gltf.scene); tagAsset(gltf.scene, b, root);
+    if ((inCorridorPreview() || inHeritagePreview() || inBatchPreview()) && b.id === 1556523934) {
+      const cupola = filmTheaterCupola(cx, cy);
+      tagAsset(cupola, b, root);
+      root.add(cupola);
+    }
+    if (inBatchPreview() && b.id === 1556523865) {
+      const details = mainTeachingDetails(cx, cy);
+      tagAsset(details, b, root);
+      root.add(details);
+    }
     if (priority) detailAssets.push({root, far: gltf.scene, asset, building: b, requested: false});
     return root;
   } catch (error) {
+    if (sourceScene !== scene) return null;
     console.warn("地标模型加载失败，使用回退建筑", asset, error);
     notifyModelFallback();
     return null;
@@ -267,11 +414,16 @@ function updateDetailAssets(): void {
     if (entry.near) { if(entry.near.visible!==close)shadowDirty=true;entry.near.visible = close; entry.far.visible = !close; }
     else if (close && !entry.requested) {
       entry.requested = true;
-      void gltfLoader.loadAsync("models/" + entry.asset + ".glb?v=17").then((gltf) => {
+      const sourceScene = scene;
+      void gltfLoader.loadAsync(`${campus.modelDir}/` + entry.asset + ".glb?v=17").then((gltf) => {
+        if (sourceScene !== scene) {
+          disposeGroup(gltf.scene);
+          return;
+        }
         entry.near = gltf.scene; tagAsset(gltf.scene, entry.building, entry.root);
         entry.root.add(gltf.scene);
         shadowDirty=true;
-      }).catch(() => { notifyModelFallback(); });
+      }).catch(() => { if (sourceScene === scene) notifyModelFallback(); });
     }
   }
 }
@@ -279,7 +431,7 @@ function updateDetailAssets(): void {
 function loadGateGLB(asset: string, gate: Gate): Promise<THREE.Group | null> {
   return new Promise((resolve) => {
     gltfLoader.load(
-      "models/" + asset + ".glb?v=17",
+      `${campus.modelDir}/` + asset + ".glb?v=17",
       (gltf) => {
         const g = gltf.scene;
         g.position.set(gate.x, 0, -gate.y);
@@ -332,14 +484,24 @@ function openDetail(it: PlaceEntry): void {
   document.querySelector("#place-detail")!.classList.add("open");
   (document.querySelector("#pd-num") as HTMLElement)!.textContent = it.num;
   document.querySelector("#pd-name")!.textContent = localName(it.name);
-  const meta: string[] = [it.kind === "water" ? t("kindWater") : it.kind === "gate" ? t("kindGate") : it.kind==='sports'?t("kindSports"):t("kindBuilding")];
+  // 居民楼/周边建筑标注（ring tier → 类别后缀）
+  let kindLabel = it.kind === "water" ? t("kindWater") : it.kind === "gate" ? t("kindGate") : it.kind==='sports'?t("kindSports"):t("kindBuilding");
+  if (it.mesh) {
+    const bid = (it.mesh.userData as BuildingUserData).id;
+    const bd = (sceneData?.buildings ?? []).find((x) => String(x.id) === String(bid));
+    if (bd?.tier === "ring") kindLabel = t("kindResidential");
+  }
+  const meta: string[] = [kindLabel];
   (document.querySelector('.building-views') as HTMLElement).style.display=it.mesh?'flex':'none';
   if (it.mesh) {
     const d = it.mesh.userData as BuildingUserData;
     meta.push(`${d.height} m`, `${d.area.toLocaleString()} m²`);
   }
   document.querySelector("#pd-meta")!.textContent = meta.join(" · ");
-  const info = PLACE_INFO[it.name];
+  const info = (hasFourthBatch() && it.mesh ? batch4Info(it.mesh.userData.id) : undefined)
+    ?? (hasThirdBatch() ? REFINEMENT_INFO[it.name] : undefined)
+    ?? (hasSecondBatch() ? BATCH2_INFO[it.name] : undefined)
+    ?? (inBatchPreview() ? BATCH_INFO[it.name] : undefined) ?? PLACE_INFO[it.name];
   document.querySelector("#pd-desc")!.textContent =
     (getLang() === "en" ? info?.descEn : info?.desc) ?? t("descFallback");
   const photo = document.querySelector("#pd-photo") as HTMLElement;
@@ -370,9 +532,38 @@ function focusBuilding(mesh: THREE.Mesh | null, view = "overview"): void {
   let distance = fit.distance;
   let dir = new THREE.Vector3(.70,.80,1.0);
   if (view === "facade") { dir.set(.2,.35,1); distance *= .82; }
+  const id = mesh.userData.id;
+  if ((inHeritagePreview() || inBatchPreview()) && isHeritageBuilding(id) && (view === "overview" || view === "facade")) {
+    const elevation = view === "facade" ? .23 : .56;
+    dir = id === FIFTH_ID ? new THREE.Vector3(.22, elevation, -1) : new THREE.Vector3(-.58, elevation, 1);
+    if (id === WENZI_ID) distance *= .86;
+    if (hasThirdBatch() && view === "facade") {
+      const entry = id === FIFTH_ID ? new THREE.Vector3(0,4.6,-14) : new THREE.Vector3(1.5,3.2,7.3);
+      center.copy(placeRoot(mesh).localToWorld(entry));
+      distance *= .50;
+    }
+  }
+  const batch = (hasSecondBatch() ? batch2Spot(id) : undefined) ?? (inBatchPreview() && batchSpot(id));
+  if (batch && (view === "overview" || view === "facade")) {
+    dir = new THREE.Vector3(...batch.view);
+    if (view === "facade") dir.y *= .55;
+    if (id === 1556523865 && view === "facade") {
+      center.set(273, box.min.y + 11, -699.6);
+      distance = Math.max(100, distance * .49);
+    } else if (batch.key !== "main") distance *= .9;
+  }
+  const root = placeRoot(mesh);
+  const batch4Front = root.userData.batch4Front as [number,number] | undefined;
+  if (batch4Front && (view === "overview" || view === "facade")) {
+    const [x,z] = batch4Front;
+    dir.set(x-.42*z,view === "facade" ? .26 : .57,z+.42*x);
+    if (view === "facade") {
+      center.copy(root.localToWorld(root.userData.batch4Entry.clone()));
+      distance *= .64;
+    }
+  }
   if (view === "court") {
     dir.set(.35,1.2,.85); distance = Math.max(75,distance*.36);
-    const root = placeRoot(mesh);
     if (root.userData.court) center.copy(root.localToWorld((root.userData.court as THREE.Vector3).clone()));
     if (root.userData.courtRadius) {
       distance=THREE.MathUtils.clamp(root.userData.courtRadius*2.3,45,90);
@@ -397,6 +588,16 @@ function composeRect(rect:ReturnType<typeof mapRect>):void {
 function focusPlace(it:SearchItem):void {
   if(it.mesh){focusBuilding(it.mesh);return;}
   const rect=mapRect();composeRect(rect);
+  if ((inVenuesPreview() || hasThirdBatch()) && VENUE_SPOTS.some(spot => spot.name === it.name)) {
+    const wind = it.name === "风雨操场";
+    const third = hasThirdBatch();
+    const baseDistance = wind ? (third ? 132 : 150) : third ? 312 : 337;
+    const scale = Math.max(1, .76 * innerHeight / Math.max(100, rect.bottom - rect.top), .57 * innerHeight / Math.max(100, rect.right - rect.left));
+    const direction = wind ? (third ? new THREE.Vector3(-.91,.40,.09) : new THREE.Vector3(-.83,.68,.74))
+      : third ? new THREE.Vector3(-.76,.85,-.59) : new THREE.Vector3(-.52,.91,1.1);
+    flyTo(camera, controls, it.target, baseDistance * scale, 1100, direction);
+    return;
+  }
   let distance=it.distance;
   if(it.extent) {
     const {width,length}=it.extent;
@@ -406,11 +607,22 @@ function focusPlace(it:SearchItem):void {
   flyTo(camera,controls,it.target,distance,1100,new THREE.Vector3(.35,1.3,1));
 }
 function homeView(): void {
+  const customLandmark = new URLSearchParams(location.search).has("landmark");
+  if (inVenuesPreview() || inHeritagePreview() || (inBatchPreview() && (!inFourthPreview() || customLandmark))) {
+    const initial = inBatchPreview() ? initialBatch.name : inHeritagePreview() ? initialHeritage : initialVenue;
+    const place = places.find(item => item.name === initial);
+    if (place) { focusPlace(place); return; }
+  }
   if (!campusPoints.length) return;
   const width=window.innerWidth,height=window.innerHeight,rect=mapRect();
   // 宿舍统一 6 层后校园垂直占比变大，压低俯角+收紧取景边距让全景宽度保持满框
-  const direction=new THREE.Vector3(.30,1.02,1);
-  const fit=framePoints(campusPoints,camera.fov,{width,height},rect,direction);
+  const corridor = inCorridorPreview();
+  const direction = corridor ? new THREE.Vector3(-0.8, 0.72, 1.05) : new THREE.Vector3(...campus.homeDirection);
+  const points = corridor ? [
+    new THREE.Vector3(196, 0, -128), new THREE.Vector3(324, 0, -128),
+    new THREE.Vector3(200, 12, -405), new THREE.Vector3(339, 15, -405),
+  ] : campusPoints;
+  const fit=framePoints(points,camera.fov,{width,height},rect,direction);
   camera.setViewOffset(width,height,fit.offset.x,fit.offset.y,width,height);
   flyTo(camera,controls,fit.target,fit.distance,1100,direction);
 }
@@ -431,44 +643,163 @@ function selectPlace(it: SearchItem): void {
 const campusPoints: THREE.Vector3[] = [];
 let buildingsRef: THREE.Group | null = null;
 async function loadScene(): Promise<void> {
-  const res = await fetch("data/scene.json");
+  const res = await fetch(campus.sceneUrl);
   if (!res.ok) throw new Error("scene.json 加载失败 (HTTP " + res.status + ")");
   const data: SceneData = await res.json();
+  const corridor = inCorridorPreview();
+  const venues = inVenuesPreview();
+  const batch = inBatchPreview();
+  const fourth = hasFourthBatch();
+  const third = hasThirdBatch();
+  const second = hasSecondBatch();
+  const replacedByBatch = (id: Building["id"]) => (batch && replacesBatchBuilding(id))
+    || (second && !!batch2Spot(id)) || (fourth && !!batch4Spec(id));
+  const heritage = inHeritagePreview() || batch;
+  const revisedVenues = venues || heritage;
+  const revisedCorridor = corridor || heritage;
+  let venueTerrain: ReturnType<typeof prepareVenueTerrain> | undefined;
+  let pads: Record<string, number> = {};
+  let samplePath: [number, number][] = [];
+  if (revisedCorridor) {
+    const response = await fetch(import.meta.env.BASE_URL + "data/shapingba-corridor.json");
+    if (!response.ok) throw new Error("Corridor data loading failed");
+    const overlay: { sourceBuilding: number; buildings: Building[]; pads: Record<string, number>; samplePath: [number, number][] } = await response.json();
+    data.buildings = data.buildings.flatMap(b => b.id === overlay.sourceBuilding ? overlay.buildings : [b]);
+    pads = overlay.pads;
+    if (corridor) samplePath = overlay.samplePath;
+  }
+  if (revisedVenues) data.buildings = venueBuildings(data.buildings);
+  if (batch) data.buildings = batchBuildings(data.buildings);
+  if (second) data.buildings = batch2Buildings(data.buildings);
+  if (fourth) data.buildings = batch4Buildings(data.buildings);
+  if (heritage) data.buildings = data.buildings.map(b => isHeritageBuilding(b.id) ? {
+    ...b, name: b.id === WENZI_ID ? HERITAGE_NAMES[1] : HERITAGE_NAMES[0],
+    height: b.id === FIFTH_ID ? 20.6 : 7.21, heightSource: "default",
+  } : b);
   sceneData=data;
 
-  buildGround(scene);
-  if (data.boundary) {
+  const terrainMode = new URLSearchParams(location.search).get("terrain");
+  if (campus.id === "shapingba" && (terrainMode === "1" || corridor || venues || heritage) && data.boundary) {
+    const terrainResponse = await fetch(import.meta.env.BASE_URL + (corridor || venues || heritage
+      ? "data/shapingba-corridor-terrain.json" : "data/shapingba-terrain.json"));
+    if (!terrainResponse.ok) throw new Error("Terrain grid loading failed");
+    const grid: TerrainGrid & { attribution: string } = await terrainResponse.json();
+    venueTerrain = revisedVenues ? prepareVenueTerrain(grid) : undefined;
+    const finishedTerrain = venueTerrain?.grid ?? grid;
+    const heritageTerrain = heritage ? prepareHeritageTerrain(finishedTerrain, data.buildings) : undefined;
+    if (heritageTerrain) Object.assign(pads, heritageTerrain.pads);
+    const baseGrid = heritageTerrain?.grid ?? finishedTerrain;
+    const batchTerrain = batch ? prepareBatchTerrain(baseGrid, data.buildings) : undefined;
+    if (batchTerrain) Object.assign(pads, batchTerrain.pads);
+    const earlierGrid = batchTerrain?.grid ?? baseGrid;
+    const secondTerrain = second ? prepareBatch2Terrain(earlierGrid, data.buildings) : undefined;
+    if (secondTerrain) Object.assign(pads, secondTerrain.pads);
+    activeTerrain = createTerrain(secondTerrain?.grid ?? earlierGrid);
+    terrainAttribution = grid.attribution + (revisedVenues ? " Venue grades and terraces are approximate reconstructions from CQU photography." : "")
+      + (heritage ? " Ground around Fifth Building and Wenzi Zhai is locally fitted to estimated thresholds." : "");
+    terrainGround = buildTerrainGround(scene, activeTerrain, data.boundary.pts);
+  } else {
+    buildGround(scene);
+  }
+  if (data.boundary && !activeTerrain) {
     const shape = new THREE.Shape(data.boundary.pts.map(([x,y]) => new THREE.Vector2(x,y)));
     const geo = new THREE.ShapeGeometry(shape); geo.rotateX(-Math.PI/2);
     const campusGround = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({color: 0xa7b690}));
     campusGround.position.y = -.15; campusGround.receiveShadow = true; scene.add(campusGround);
   }
-  const campusGreen = campusAreas(data.green, data.boundary?.pts);
-  const campusWater = campusAreas(data.water, data.boundary?.pts);
+  const campusRings = ((data as { boundaries?: [number, number][][] }).boundaries?.length
+    ? (data as { boundaries?: [number, number][][] }).boundaries
+    : data.boundary ? [data.boundary.pts] : []) as [number, number][][];
+  const campusGreen = campusAreas(data.green, campusRings);
+  const campusWater = campusAreas(data.water, campusRings);
   buildGreen(gGreen, gSports, campusGreen);
-  buildSportsMarks(gSports, campusGreen);
-  buildPaving(gRoads, campusAreas(data.paving, data.boundary?.pts));
-  buildWater(gWater, campusWater);
+  buildSportsMarks(gSports, campusGreen, revisedVenues, third);
+  buildPaving(gRoads, campusAreas(data.paving, campusRings));
   buildRoads(gRoads, data.boundary ? clipRoads(data.roads, data.boundary.pts) : data.roads);
-
-  if (data.boundary) {
-    for (const [x,y] of data.boundary.pts) campusPoints.push(new THREE.Vector3(x,0,-y));
-    for (const building of data.buildings.filter(b=>b.inside)) {
-      for (const [x,y] of building.polygon) campusPoints.push(new THREE.Vector3(x,building.height,-y));
+  if (activeTerrain) {
+    for (const water of campusWater) {
+      const layer = new THREE.Group();
+      const [x, y] = bboxCenter(water.outers[0]);
+      layer.position.y = lakeHeight(water.id, x, y);
+      gWater.add(layer);
+      buildWater(layer, [water]);
+    }
+    for (const layer of [gGreen, gSports, gRoads]) drapeSurfaces(layer, groundHeight);
+  } else {
+    buildWater(gWater, campusWater);
+  }
+  if (venueTerrain) buildCampusAVenues(gSports, venueTerrain, groundHeight, third);
+  if (samplePath.length) {
+    const lifted = ([x, y]: [number, number]) => new THREE.Vector3(x, groundHeight(x, y) + 0.55, -y);
+    const color = 0xffcf6a;
+    const profileLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(subdividePath(samplePath, 2).map(lifted)),
+      new THREE.LineBasicMaterial({ color }));
+    profileLine.name = "corridor-sample-road";
+    scene.add(profileLine);
+    for (const endpoint of [samplePath[0], samplePath[samplePath.length - 1]]) {
+      const marker = new THREE.Mesh(new THREE.SphereGeometry(1.65, 12, 8), new THREE.MeshBasicMaterial({ color }));
+      marker.position.copy(lifted(endpoint));
+      scene.add(marker);
     }
   }
   const inside = data.buildings.filter((b) => b.inside);
-  gContext.add(buildContext(data));
-  if (data.boundary) {
-    boundaryLine = buildBoundaryLine(data.boundary);
-    scene.add(boundaryLine);
+  const ownFoundation = (b: Building) => second && b.id === 1365750556;
+  const foundation = activeTerrain ? buildFoundations(scene, inside.filter(b => b.id !== "batch-gate" && !ownFoundation(b)), groundHeight, pads) : () => 0;
+  const baseOf = (b: Building) => b.id === "batch-gate" ? groundHeight(...bboxCenterOfBuilding(b))
+    : ownFoundation(b) ? pads[b.id] ?? 0 : foundation(b);
+  const viewRings = activeTerrain && data.boundary ? [data.boundary.pts] : campusRings;
+  for (const ring of viewRings) {
+    for (const [x, y] of ring) campusPoints.push(new THREE.Vector3(x, groundHeight(x, y), -y));
+  }
+  for (const building of inside) {
+    if (activeTerrain && data.boundary && !inCampus(bboxCenterOfBuilding(building), data.boundary.pts)) continue;
+    for (const [x, y] of building.polygon) campusPoints.push(new THREE.Vector3(x, baseOf(building) + building.height, -y));
+  }
+  // 标签全景压缩阈值随校区尺寸自适应（虎溪≈1700 不变；大校区按校内包围盒对角线放宽）
+  if (campusPoints.length > 1) {
+    const box = new THREE.Box3().setFromPoints(campusPoints);
+    const size = box.getSize(new THREE.Vector3());
+    labels.overviewDistance = Math.max(1700, Math.hypot(size.x, size.z) * 1.15);
+  }
+  if (!activeTerrain) gContext.add(buildContext(data));
+  boundaryLines.length = 0;
+  for (const ring of campusRings) {
+    const line = buildBoundaryLine({ pts: activeTerrain ? subdividePath([...ring, ring[0]]) : ring });
+    if (activeTerrain) {
+      const p = line.geometry.getAttribute("position");
+      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + groundHeight(p.getX(i), -p.getZ(i)));
+    }
+    boundaryLines.push(line);
+    scene.add(line);
   }
 
-  const generic = inside.filter((b) => !b.landmark);
-  const buildings = buildBuildings(scene, generic);
+  const generic = inside.filter(b => !b.landmark && !replacedByBatch(b.id) && !(heritage && isHeritageBuilding(b.id)));
+  const buildings = buildBuildings(scene, generic, baseOf);
   buildingsRef = buildings;
+  if (heritage) for (const b of inside.filter(b => isHeritageBuilding(b.id))) {
+    const [cx, cy] = bboxCenterOfBuilding(b);
+    const model = buildHeritageBuilding(Number(b.id), cx, cy, baseOf(b), third);
+    tagAsset(model, b, model);
+    buildings.add(model);
+  }
+  if (batch) for (const b of inside.filter(b => replacesBatchBuilding(b.id))) {
+    const model = buildBatchBuilding(b, baseOf(b));
+    tagAsset(model, b, model);
+    buildings.add(model);
+  }
+  if (second) for (const b of inside.filter(b => batch2Spot(b.id))) {
+    const model = buildBatch2Building(b, baseOf(b));
+    tagAsset(model, b, model);
+    buildings.add(model);
+  }
+  if (fourth) for (const b of inside.filter(b => batch4Spec(b.id))) {
+    const model = buildBatch4Building(b, baseOf(b), groundHeight, data.roads);
+    tagAsset(model, b, model);
+    buildings.add(model);
+  }
   // 地标流式加载：参数化回退先上（首屏零 GLB 等待），far 档按距离排序双并发后台替换
-  const landmarkDefs = inside.filter((b) => b.landmark);
+  const landmarkDefs = inside.filter(b => b.landmark && !(heritage && isHeritageBuilding(b.id)) && !replacedByBatch(b.id));
+  for (const b of landmarkDefs) { GLB_LANDMARKS.add(b.landmark); PRIORITY_ASSETS.add(b.landmark); }
   const landmarkFallback = (b: Building): THREE.Group => {
     if (b.landmark === "gym") return buildGym(b);
     if (b.landmark === "library") return buildLibrary(b);
@@ -479,13 +810,15 @@ async function loadScene(): Promise<void> {
   };
   const streamDefs = landmarkDefs.map((b) => {
     const fallback = landmarkFallback(b);
+    fallback.position.y += baseOf(b);
     buildings.add(fallback);
     return { asset: b.landmark, building: b, fallback };
   });
   rerankLandmarks = streamLandmarkGLBs(streamDefs, {
     parent: buildings,
+    isCurrent: () => buildings.parent === scene,
     center: controls.target.clone(),
-    load: (asset, b) => loadLandmarkGLB(asset, b),
+    load: (asset, b) => loadLandmarkGLB(asset, b, baseOf(b)),
     onSwap: (asset, root) => {
       // GLB 替换回退后，刷新地点表/标注选中引用（labels 用固定坐标无需改）
       let mesh: THREE.Mesh | undefined;
@@ -504,18 +837,23 @@ async function loadScene(): Promise<void> {
     },
   });
   const manualGreenZones = data.green.filter((g) => g.manual);
-  treeSys = buildTrees(gTrees, [...campusGreen,...sportsSiteAreas(campusGreen)], data.roads, campusWater, data.buildings, data.boundary?.pts, manualGreenZones);
-  vegetation = buildVegetation(gTrees, { green: data.green, roads: data.roads, water: campusWater, buildings: data.buildings });
+  treeSys = buildTrees(gTrees, [...campusGreen,...sportsSiteAreas(campusGreen), ...(revisedVenues ? venuePlantExclusions() : [])], data.roads, campusWater, data.buildings, data.boundary?.pts, manualGreenZones, groundHeight);
+  const vegetationGroup = activeTerrain ? new THREE.Group() : gTrees;
+  vegetation = buildVegetation(vegetationGroup, { green: data.green, roads: data.roads, water: campusWater, buildings: data.buildings, gardens: campus.gardens });
+  if (activeTerrain) {
+    liftPlants(vegetationGroup, groundHeight);
+    gTrees.add(vegetationGroup);
+  }
   const jinOutline = campusWater.find((w) => w.name === "缙湖")?.outers[0] ?? null;
   // 人流热点：一教/图书馆/综合楼/一食/二食周边（上下课+就餐人流）
-  const HOTSPOT_NAMES = new Set(["第一教学楼", "图书馆", "综合楼", "第一食堂", "第二食堂"]);
+  const HOTSPOT_NAMES = new Set(campus.hotspots);
   const hotspots = data.buildings.filter((b) => b.inside && HOTSPOT_NAMES.has(b.name)).map((b) => {
     const xs = b.polygon.map((p) => p[0]);
     const ys = b.polygon.map((p) => p[1]);
     return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, r: 95,
       hw: (Math.max(...xs) - Math.min(...xs)) / 2, hd: (Math.max(...ys) - Math.min(...ys)) / 2 };
   });
-  traffic = buildTraffic(gTraffic, { roads: data.roads, lakeOutline: jinOutline, hotspots });
+  traffic = buildTraffic(gTraffic, { roads: data.roads, lakeOutline: jinOutline, hotspots, heightAt: activeTerrain?.heightAt });
   walkBuildings = data.buildings.filter((b) => b.inside && b.name && !b.name.includes("门"));
   statsVegCount = vegetation.counts.bushes + vegetation.counts.flowers + vegetation.counts.hedges + vegetation.counts.beds;
   // 环湖专类园标牌（植物园环湖带，随语言切换 relabel）
@@ -528,8 +866,8 @@ async function loadScene(): Promise<void> {
   dayNight = new DayNight(scene, hemi, sun, buildings);
   dayNight.apply("day");
 
-  routeNavigator = new Navigator(scene, data.graph);
-  walkWorld=new WalkWorld(data);
+  routeNavigator = new Navigator(scene, data.graph, activeTerrain?.heightAt);
+  walkWorld=new WalkWorld(data, groundHeight, baseOf);
   sharedLock=new SharedPointerLock(camera,renderer.domElement);
   walking=new Walking(camera,controls,walkWorld,sharedLock,(active,message)=>{
     walkRouteState=null;
@@ -539,7 +877,7 @@ async function loadScene(): Promise<void> {
     else if(active)showToast(t("walkEntered"));
     if(!active&&(walkViewport[0]!==innerWidth||walkViewport[1]!==innerHeight)){resize();if(selectedPlace)focusPlace(selectedPlace);else homeView();}
   });
-  freeCam=new FreeCam(camera,controls,walkWorld,sharedLock,{
+  freeCam=new FreeCam(camera,controls,walkWorld,sharedLock,flyBoundsOf(campus),{
     onSpeed:(s)=>{document.querySelector('#freecam-speed')!.textContent=`${Math.round(s)} m/s`;},
     onEdge:()=>showToast(t("flyEdge")),
     onExit:(msg)=>{document.body.classList.remove('freecam-mode');picker?.setEnabled(true);shadowDirty=true;if(msg)showToast(msg);},
@@ -565,15 +903,25 @@ async function loadScene(): Promise<void> {
   };
 
   // 地点收集：有名字的楼（同名取第一个 mesh，递归含 GLB 组）+ 湖 + 校门
-  const byName = new Map<string, THREE.Mesh>();
+  byName.clear();
   buildings.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const d = mesh.userData as BuildingUserData;
-    if (!d.name || d.name.includes("门")) return;
+    if (!d.name || (d.name.includes("门") && d.id !== "batch-gate")) return;
     if (!byName.has(d.name)) byName.set(d.name, mesh);
   });
-  places = collectPlaces({...data, water: campusWater,green:campusGreen}, byName);
+  const mapPoints = [...(campus.mapPoints ?? []).filter(point => !revisedCorridor || !byName.has(point.name)), ...(revisedVenues ? VENUE_SPOTS : [])];
+  places = collectPlaces({...data, water: campusWater,green:campusGreen}, byName, mapPoints);
+  if (activeTerrain) {
+    const byId = new Map(inside.map((b) => [b.id, b]));
+    for (const place of places) {
+      const building = byId.get(place.mesh?.userData.id);
+      const water = place.kind === "water" ? campusWater.find((item) => item.name === place.name) : undefined;
+      const { x, z } = place.target;
+      place.target.y += building ? baseOf(building) : water ? lakeHeight(water.id, x, -z) : groundHeight(x, -z);
+    }
+  }
   navPanel = initNavigationPanel(routeNavigator,places,focusRoute,{t,getLang,localName,onLangChange});
   tourRoutes = buildTourRoutes(vegetation.gardenLabels, TOUR_STOPS);
   activeRoute = tourRoutes[0];
@@ -582,13 +930,39 @@ async function loadScene(): Promise<void> {
     const el = document.querySelector<HTMLElement>(`[data-route-count="${r.id}"]`);
     if (el) el.textContent = `${r.stops.length} ${getLang() === "en" ? "stops" : "站"}`;
   }
+  // 校区动态 UI：面板标题 + 步行出生点 + 快捷按钮（两处容器同源填充）
+  renderCampusTitles();
+  const spawnSel=document.querySelector<HTMLSelectElement>('#walk-spawn')!;
+  spawnSel.innerHTML=campus.walkSpawns.map((n)=>`<option>${n}</option>`).join("");
+  for (const sel of ["#quick-start", "#shortcuts"]) {
+    const sc=document.querySelector(sel);
+    if(!sc) continue;
+    sc.classList.toggle("batch-shortcuts", batch);
+    sc.innerHTML="";
+    const shortcuts = batch ? previewSpots.map(s => [s.label, s.name]) : heritage ? HERITAGE_NAMES.map(name => [name, name]) : venues ? VENUE_SPOTS.map(spot => [spot.name, spot.name]) : corridor
+      ? [["学生九舍", "A区学生九舍"], ["三食堂", "学生三食堂"], ["电影学院剧场", "美视电影学院剧场"]] : campus.shortcuts;
+    for(const [label,q] of shortcuts){
+      const b=document.createElement("button");
+      b.type="button";b.textContent=label;b.dataset.shortcut=q;
+      b.addEventListener("click",()=>{
+        const place = (corridor || venues || heritage) && places.find(item => item.name === q);
+        if (place) { selectPlace(place); return; }
+        const input = document.querySelector<HTMLInputElement>("#search")!;
+        input.value = label;
+        input.dispatchEvent(new Event("input"));
+      });
+      sc.appendChild(b);
+    }
+  }
   renderPlacesPanel();
-  initSearch(
-    document.querySelector<HTMLInputElement>("#search")!,
-    document.querySelector<HTMLElement>("#suggestions")!,
-    places,
-    selectPlace,
-  );
+  if (!searchApi) {
+    searchApi = initSearch(
+      document.querySelector<HTMLInputElement>("#search")!,
+      document.querySelector<HTMLElement>("#suggestions")!,
+      places,
+      selectPlace,
+    );
+  } else searchApi.setItems(places);
 
   picker = new BuildingPicker(renderer.domElement, camera, buildings, {
     onSelect: (mesh) => {
@@ -611,21 +985,34 @@ async function loadScene(): Promise<void> {
   });
 
   // 标注：楼名（楼顶）+ 湖名
-  for(const place of places.filter(p=>p.kind==='sports'))labels.add(place.name,place.target.clone().setY(3),6000,
+  for(const place of places.filter(p=>p.kind==='sports'))labels.add(place.name,place.target.clone().add(new THREE.Vector3(0,3,0)),6000,
     {cls:'sports',priority:3,onClick:()=>selectPlace(place)});
   for (const [name, mesh] of byName) {
     const box = boundsOf(mesh);
-    const pos = box.getCenter(new THREE.Vector3()); pos.y = box.max.y + 5;
-    labels.add(name, pos, 6000, { priority: mesh.userData.pickRoot ? 5 : 1, onClick: () => {
+    const pos = box.getCenter(new THREE.Vector3());
+    pos.y = box.max.y + (corridor && mesh.userData.id === 1556523934 ? 13 : 5);
+    labels.add(name, pos, 6000, { priority: Object.hasOwn(pads, String(mesh.userData.id)) ? 8 : mesh.userData.pickRoot ? 5 : 1, onClick: () => {
       const item=places.find(p=>p.name===name);if(item)selectPlace(item);
     } });
   }
+  for (const point of mapPoints ?? []) {
+    const place = places.find((item) => item.name === point.name)!;
+    labels.add(place.name, place.target.clone().add(new THREE.Vector3(0, 3, 0)), 6000, {
+      cls: place.kind === "gate" ? "gate" : undefined,
+      priority: 5,
+      onClick: () => selectPlace(place),
+    });
+  }
+
   for (const w of campusWater) {
     if (!w.name || w.inside === false) continue;
     const [cx, cy] = bboxCenter(w.outers[0]);
-    labels.add(w.name, new THREE.Vector3(cx, 2, -cy), 6000, {
+    labels.add(w.name, new THREE.Vector3(cx, 2 + lakeHeight(w.id, cx, cy), -cy), 6000, {
       cls: "water", priority: 3,
-      onClick: () => { flyTo(camera, controls, new THREE.Vector3(cx, 0, -cy), 400); },
+      onClick: () => {
+        const place = places.find((item) => item.name === w.name && item.kind === "water");
+        if (place) selectPlace(place);
+      },
     });
   }
 
@@ -640,6 +1027,7 @@ async function loadScene(): Promise<void> {
   }
 
   statsTreeCount = treeSys?.count ?? 0;
+  labels.relabel(localName);
   refreshStatsHud(data.buildings.length, treeSys?.count ?? 0);
 }
 
@@ -788,7 +1176,12 @@ document.querySelector("#season-seg")!.addEventListener("click", (e) => {
   applySeason(btn.dataset.s as Season);
 });
 
-loadScene().then(() => {
+(async () => {
+  await Promise.resolve(); // 微任务边界：避开模块求值期 TDZ（disposeCampus 触碰后段 let）
+  if (campus.id === "all") { await loadOverviewCampus(); return; }
+  await loadScene();
+  document.body.classList.remove("overview-mode");
+})().then(() => {
   renderLayers();
   renderLighting();
   const view=parseSharedView(location.hash);
@@ -819,7 +1212,7 @@ loadScene().then(() => {
   } else homeView();
   shadowDirty=true;
   document.querySelector<HTMLElement>('#boot')!.hidden=true;
-  initOnboarding({t,getLang});
+  initOnboarding({t,getLang}, !(inCorridorPreview() || inVenuesPreview() || inHeritagePreview() || inBatchPreview()));
 }).catch((e: unknown) => {
   statsEl.textContent = "加载出错：" + (e instanceof Error ? e.message : String(e));
   statsEl.classList.add("err");
@@ -849,7 +1242,7 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>(".hud-tab")) {
 interface LayerDef { name: Pair; desc: Pair; get: () => boolean; set: (v: boolean) => void }
 const LAYER_DEFS: LayerDef[] = [
   { name: { zh: "地点名称", en: "Place labels" }, desc: { zh: "在地图上显示地点名称", en: "Show place names on the map" }, get: () => labels.enabled, set: (v) => { labels.enabled = v; } },
-  { name: { zh: "校园边界", en: "Campus boundary" }, desc: { zh: "白色细线标示大致范围", en: "Thin white outline of the grounds" }, get: () => boundaryLine?.visible ?? false, set: (v) => { if (boundaryLine) boundaryLine.visible = v; } },
+  { name: { zh: "校园边界", en: "Campus boundary" }, desc: { zh: "白色细线标示大致范围", en: "Thin white outline of the grounds" }, get: () => boundaryLines[0]?.visible ?? false, set: (v) => { for (const l of boundaryLines) l.visible = v; } },
   { name: { zh: "校园建筑", en: "Buildings" }, desc: { zh: "边界内的主要建筑", en: "Main buildings inside the boundary" }, get: () => buildingsRef?.visible ?? true, set: (v) => { if (buildingsRef) buildingsRef.visible = v; } },
   { name: { zh: "树木", en: "Trees" }, desc: { zh: "树木、绿篱与花境", en: "Trees, hedges & flower beds" }, get: () => gTrees.visible, set: (v) => { gTrees.visible = v; } },
   { name: { zh: "行人", en: "Pedestrians" }, desc: { zh: "沿路网漫步的人流", en: "Walkers on paths & roads" }, get: () => trafficCtl.walkers, set: (v) => { trafficCtl.walkers = v; traffic?.setControls(trafficCtl); } },
@@ -1100,15 +1493,18 @@ document.querySelector('#walk-start')!.addEventListener('click',()=>{
   if(!walking||!walkWorld||!routeNavigator||!sceneData)return;
   const name=document.querySelector<HTMLSelectElement>('#walk-spawn')!.value,place=places.find(p=>p.name===name);if(!place)return;
   const entry=walkSpawns.find(p=>p.name===name);
-  const spawn=entry&&walkWorld.findSpawn(entry.point as [number,number],sceneData.graph.nodes);
+  const target: [number, number] = [place.target.x, -place.target.z];
+  const nearby = routeNavigator.router.snap(...target, 100);
+  const preferred = entry?.point as [number,number] | undefined;
+  const spawn=walkWorld.findSpawn(preferred ?? (nearby ? routeNavigator.router.point(nearby) : target), sceneData.graph.nodes);
   if(!spawn){showToast('附近没有安全步行点，请选择其他地点。');return;}
   cancelFly();if(tour.on)setTour(false);if(navMode)setNavMode(false);walkViewport=[innerWidth,innerHeight];
-  walking.enter(spawn,entry.lookAt as [number,number]);
+  walking.enter(spawn, (entry?.lookAt as [number,number] | undefined) ?? target);
 });
 document.querySelector('#walk-exit')!.addEventListener('click',()=>walking?.exit());
 function focusRoute():void {
   const route=routeNavigator?.result;if(!route)return;
-  const points=route.points.map(([x,y])=>new THREE.Vector3(x,.3,-y)),rect=mapRect(),direction=new THREE.Vector3(.28,1.45,1);
+  const points=route.points.map(([x,y])=>new THREE.Vector3(x,groundHeight(x,y)+.3,-y)),rect=mapRect(),direction=new THREE.Vector3(.28,1.45,1);
   const fit=framePoints(points,camera.fov,{width:innerWidth,height:innerHeight},rect,direction);composeRect(rect);flyTo(camera,controls,fit.target,Math.max(120,fit.distance),900,direction);
 }
 function setNavMode(v: boolean): void {
@@ -1220,10 +1616,10 @@ document.querySelector("#tl-export")!.addEventListener("click", () => {
   g.textAlign = "left";
   g.fillText("© OpenStreetMap 贡献者", bar * 0.7, h + bar / 2);
   g.textAlign = "right";
-  g.fillText("重庆大学虎溪校区 3D 地图 · zhipengGui", w - bar * 0.7, h + bar / 2);
+  g.fillText(`${document.title} · zhipengGui`, w - bar * 0.7, h + bar / 2);
   const a = document.createElement("a");
   a.href = canvas.toDataURL("image/png");
-  a.download = "huxi-campus-3d.png";
+  a.download = `${campus.id}-campus-3d.png`;
   a.click();
   showToast(t("toastExported"));
 });
@@ -1242,6 +1638,7 @@ document.querySelector("#tl-lang")!.addEventListener("click", () => {
   setLang(getLang() === "zh" ? "en" : "zh");
 });
 onLangChange(() => {
+  renderCampusTitles();
   navPanel?.rebuild();
   renderPlacesPanel();
   renderLayers();
@@ -1256,6 +1653,7 @@ onLangChange(() => {
   navStatusEl.textContent = navStatusEl.textContent || "";
 });
 applyStaticI18n();
+renderCampusTitles();
 
 function placeDetailOpen(): boolean {
   return document.querySelector("#hud")!.classList.contains("detail-mode");
@@ -1319,6 +1717,154 @@ function renderPlacesPanel(): void {
   renderer.domElement.addEventListener('touchend',lookEnd);renderer.domElement.addEventListener('touchcancel',lookEnd);
 })();
 
+// ---- 校区总览（批 2，campusId=all） ----
+let overviewBuild: OverviewBuild | null = null;
+const OVERVIEW_CAMPUSES = ["huxi", "shapingba", "liangjiang", "zhigu"];
+
+async function loadOverviewCampus(): Promise<void> {
+  disposeCampus();
+  campus = CAMPUSES.all;
+  overviewBuild?.dispose();
+  overviewBuild = null;
+  // 最小天空/光照
+  dayNight = new DayNight(scene, hemi, sun, new THREE.Group());
+  dayNight.apply("day");
+  overviewBuild = await buildOverview(scene, OVERVIEW_CAMPUSES.map((id) => CAMPUSES[id]), (text, pos, opts) => {
+    labels.add(text, pos, 2600, { cls: opts.cls, priority: 5, onClick: opts.onClick });
+  });
+  camera.position.set(0, 300, 330);
+  controls.target.set(0, 0, 0);
+  controls.update();
+  // 总览专属 HUD：隐藏校区面板，清残留统计（地点列表/游览计数等为校区语义）
+  document.body.classList.add("overview-mode");
+  statsEl.textContent = "";
+  document.querySelector("#hud-count")!.textContent = "";
+  document.querySelector("#tour-count")!.textContent = "";
+  renderCampusTitles();
+}
+
+// ---- 多校区：清理与切换（批 1c） ----
+function resetSceneSkeleton(): void {
+  scene = new THREE.Scene();
+  scene.add(hemi, sun);
+  labels = new LabelLayer(app);
+  scene.add(labels.root);
+  gGreen = new THREE.Group(); gSports = new THREE.Group(); gWater = new THREE.Group();
+  gRoads = new THREE.Group(); gTrees = new THREE.Group();
+  gTraffic = new THREE.Group(); gTraffic.name = "g-traffic"; gContext = new THREE.Group();
+  scene.add(gGreen, gSports, gWater, gRoads, gTrees, gTraffic, gContext);
+}
+
+function disposeCampus(): void {
+  closeDetail();
+  selectedPlace = null; flyTargetBuilding = null;
+  picker = null; navPanel = null; routeNavigator = null;
+  treeSys = null; vegetation = null; traffic = null;
+  walkRouteState = null; rerankLandmarks = null; followTarget = null;
+  tourRoutes = []; activeRoute = null;
+  places.length = 0; byName.clear(); tourStops.length = 0;
+  campusPoints.length = 0; detailAssets.length = 0; walkBuildings = [];
+  statsTreeCount = 0; statsVegCount = 0;
+  sceneData = null; boundaryLines.length = 0; buildingsRef = null; dayNight = null;
+  activeTerrain = null; terrainGround = null; terrainAttribution = "";
+  // three.js 官方卸载规范：几何/材质（数组）/贴图/InstancedMesh 实例缓冲
+  scene.traverse((o) => {
+    const g = o as THREE.Mesh & { geometry?: THREE.BufferGeometry };
+    if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
+    g.geometry?.dispose(); // 不限 isMesh：Line/Points 同样持有几何
+    const mat = (o as THREE.Mesh).material;
+    if (mat) {
+      const mats = Array.isArray(mat) ? mat : [mat];
+      for (const m of mats as (THREE.Material & { map?: THREE.Texture; normalMap?: THREE.Texture; emissiveMap?: THREE.Texture })[]) {
+        m.map?.dispose(); m.normalMap?.dispose(); m.emissiveMap?.dispose();
+        m.dispose();
+      }
+    }
+  });
+  (scene.background as THREE.Texture | null)?.dispose?.();
+  scene.environment = null; // 天空环境贴图引用解除（skyGradient 若为缓存则复用不泄漏）
+  labels.dispose();
+  resetSceneSkeleton();
+}
+
+let switching = false;
+async function switchCampus(id: string): Promise<void> {
+  const cfg = CAMPUSES[id];
+  if (switching || !cfg || !cfg.available || cfg.id === campus.id) return;
+  switching = true;
+  freeCam?.exit(); walking?.exit();
+  if (tour.on) setTour(false);
+  if (navMode) setNavMode(false);
+  if (followTarget) exitFollow();
+  if (flagMode) setFlagMode(false);
+  cancelFly();
+  const boot = document.querySelector<HTMLElement>("#boot")!;
+  document.querySelector("#boot-title")!.textContent = `正在前往 ${cfg.nameZh}…`;
+  document.querySelector<HTMLElement>(".boot-spinner")!.hidden = false;
+  document.querySelector<HTMLButtonElement>("#boot-retry")!.hidden = true;
+  document.querySelector("#boot-note")!.textContent = "";
+  boot.hidden = false;
+  await new Promise((r) => setTimeout(r, 60)); // 先绘制遮罩
+  try {
+    if (id === "all") {
+      await loadOverviewCampus();
+      updateCampusUrl();
+      boot.hidden = true;
+      switching = false;
+      return;
+    }
+    document.body.classList.remove("overview-mode");
+    disposeCampus();
+    overviewBuild?.dispose(); overviewBuild = null;
+    campus = cfg;
+    await loadScene();
+    renderLayers(); renderLighting();
+    homeView();
+    updateCampusUrl();
+  } catch (e) {
+    console.error("switchCampus failed", e);
+    if (campus.id !== "huxi") {
+      disposeCampus();
+      campus = CAMPUSES.huxi;
+      await loadScene();
+      renderLayers(); renderLighting(); homeView();
+      updateCampusUrl();
+    }
+    showToast("校区加载失败，已返回虎溪");
+  }
+  boot.hidden = true;
+  switching = false;
+}
+
+// 校区切换器（工具栏）
+(function initCampusSwitcher() {
+  const btn = document.createElement("button");
+  btn.id = "tl-campus"; btn.type = "button";
+  btn.title = "切换校区"; btn.textContent = "校";
+  const menu = document.createElement("div");
+  menu.id = "campus-menu"; menu.hidden = true;
+  const allItem = document.createElement("button");
+  allItem.type = "button";
+  allItem.textContent = "🗺 校区总览";
+  allItem.addEventListener("click", () => { menu.hidden = true; void switchCampus("all"); });
+  menu.appendChild(allItem);
+  for (const cfg of Object.values(CAMPUSES)) {
+    if (cfg.id === "all") continue;
+    const item = document.createElement("button");
+    item.type = "button";
+    item.textContent = cfg.id === "shapingba" && batchMode === "batch4" ? "沙坪坝 A 区" : cfg.nameZh;
+    item.disabled = !cfg.available;
+    item.title = cfg.available ? "" : "建设中，敬请期待";
+    item.addEventListener("click", () => { menu.hidden = true; void switchCampus(cfg.id); });
+    menu.appendChild(item);
+  }
+  document.querySelector("#tools")!.before(menu);
+  const fs = document.querySelector("#tl-fs");
+  fs!.after(btn);
+  btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target as Node)) menu.hidden = true; });
+})();
+
 function escapeAll(): void {
   if(walking?.active){walking.exit();return;}
   if(freeCam?.active){freeCam.exit();return;}
@@ -1339,6 +1885,7 @@ window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (k === "h") document.querySelector<HTMLButtonElement>("#tl-home")!.click();
   else if (k === "v") enterFreeCam();
+  else if (e.key === "0") void switchCampus("all");
   else if (k === "n") document.querySelector<HTMLButtonElement>("#tl-compass")!.click();
   else if (k === "1") applyLighting("morning");
   else if (k === "2") applyLighting("day");
@@ -1427,8 +1974,8 @@ renderer.domElement.addEventListener("click", (e) => {
     -((e.clientY - rect.top) / rect.height) * 2 + 1,
   );
   followRay.setFromCamera(ndc, camera);
-  const hit = new THREE.Vector3();
-  if (!followRay.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return;
+  const hit = pickGround(followRay);
+  if (!hit) return;
   const x = hit.x, y = -hit.z;
   const sceneDataMeta = sceneData?.meta;
   const lon0 = sceneDataMeta?.origin[0] ?? 106.295;
@@ -1516,7 +2063,7 @@ renderer.setAnimationLoop((t) => {
 });
 
 // 调试入口（控制台用）
-Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get freeCam(){return freeCam;},get vegetation(){return vegetation;},get treeSys(){return treeSys;},get follow(){return followTarget;},followAt(mi:number,ii:number){const g=scene.getObjectByName('g-traffic');if(!g)return;let i=0;let target:THREE.InstancedMesh|undefined;g.traverse(o=>{if((o as THREE.InstancedMesh).isInstancedMesh){if(i===mi)target=o as THREE.InstancedMesh;i++;}});if(target)followTarget={mesh:target,id:ii};},get trafficCtl(){return trafficCtl;} } });
+Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get terrain(){return activeTerrain;},get freeCam(){return freeCam;},get vegetation(){return vegetation;},get treeSys(){return treeSys;},get follow(){return followTarget;},followAt(mi:number,ii:number){const g=scene.getObjectByName('g-traffic');if(!g)return;let i=0;let target:THREE.InstancedMesh|undefined;g.traverse(o=>{if((o as THREE.InstancedMesh).isInstancedMesh){if(i===mi)target=o as THREE.InstancedMesh;i++;}});if(target)followTarget={mesh:target,id:ii};},get trafficCtl(){return trafficCtl;},switchCampus:(id:string)=>{void switchCampus(id);},get memInfo(){return {...renderer.info.memory};},reload(){return (async()=>{switching=true;disposeCampus();campus=CAMPUSES.huxi;await loadScene();renderLayers();renderLighting();homeView();switching=false;})();} } });
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-building-view]")) {
   button.addEventListener("click", () => focusBuilding(flyTargetBuilding, button.dataset.buildingView));

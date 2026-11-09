@@ -21,6 +21,8 @@ export interface Building {
   area: number;
   polygon: [number, number][];
   holes: [number, number][][];
+  /** 建筑分级：core=校内 / ring=周边（居民楼等），ring 渲染降饱和 */
+  tier?: "core" | "ring";
 }
 
 export interface Road {
@@ -63,6 +65,8 @@ export interface RoadGraph {
 export interface SceneData {
   meta: SceneMeta;
   boundary: Boundary | null;
+  /** 多校区多环边界（沙坪坝 A/B/C）；虎溪单环时与 boundary 一致 */
+  boundaries?: [number, number][][];
   buildings: Building[];
   roads: Road[];
   water: Area[];

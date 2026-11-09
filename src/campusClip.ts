@@ -7,9 +7,18 @@ export function areaCenter(area: Area): Point {
     (Math.min(...ring.map(p=>p[1]))+Math.max(...ring.map(p=>p[1])))/2];
 }
 
+type RingList = Point[][];
+
+/** 单环/多环自适应（多环=任一环内即校内）。 */
+export function ringsIn([x,y]: Point, rings: Point[] | RingList): boolean {
+  const multi = rings.length>0 && Array.isArray(rings[0][0]);
+  if(!multi) return inCampus([x,y], rings as Point[]);
+  return (rings as RingList).some(r=>inCampus([x,y], r));
+}
+
 /** All campus surfaces follow the same boundary policy, including sport facilities. */
-export function campusAreas(areas: Area[], ring?: Point[]): Area[] {
-  return areas.filter(a=>a.outers[0]?.length && (!ring || inCampus(areaCenter(a),ring)));
+export function campusAreas(areas: Area[], rings?: Point[] | RingList): Area[] {
+  return areas.filter(a=>a.outers[0]?.length && (!rings || rings.length===0 || ringsIn(areaCenter(a), rings)));
 }
 
 export function inCampus([x,y]: Point, ring: Point[]): boolean {

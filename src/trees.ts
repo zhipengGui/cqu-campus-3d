@@ -195,6 +195,7 @@ export function buildTrees(
   buildings: Building[],
   boundary?: Pt[] | null,
   manualZones: ManualArea[] = [],
+  heightAt: (x: number, y: number) => number = () => 0,
 ): TreeSystem {
   const rng = mulberry32(20261013);
   const treeZones = manualZones.filter((z) => !z.role);
@@ -425,7 +426,7 @@ export function buildTrees(
       e.set(0, rec.rot, 0);
       q.setFromEuler(e);
       s.set(rec.sc, rec.sc, rec.sc);
-      v.set(rec.x, 0, -rec.y);
+      v.set(rec.x, heightAt(rec.x, rec.y), -rec.y);
       m.compose(v, q, s);
       trunks.setMatrixAt(i, m);
       // 初始全部进远档，首次 updateLod 分档
@@ -478,7 +479,7 @@ export function buildTrees(
           e.set(0, rec.rot, 0);
           q.setFromEuler(e);
           s.set(rec.sc, rec.sc, rec.sc);
-          v.set(rec.x, 0, -rec.y);
+          v.set(rec.x, heightAt(rec.x, rec.y), -rec.y);
           m.compose(v, q, s);
           colorOf(rec, c);
           const isNear = dx * dx + dz * dz < LOD_NEAR * LOD_NEAR;

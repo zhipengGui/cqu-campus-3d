@@ -11,11 +11,13 @@ export interface SearchItem {
   target: THREE.Vector3;
   distance: number; // 建议的落点距离
   mesh?: THREE.Mesh;
+  searchTerms?: string[];
 }
 
 /** 搜索别名：拼音/常用简称 → 展开为标准子串再匹配（如 "shitang"→"食堂" 命中三个食堂）。 */
 const SEARCH_ALIASES: Record<string, string> = {
   tushuguan: "图书馆", tsg: "图书馆",
+  逸夫楼: "理工馆", 逸夫图书馆: "理工馆",
   yijiao: "一教", jiaoxuelou: "教学楼",
   zonghelou: "综合楼",
   likelou: "理科楼",
@@ -37,7 +39,7 @@ export function initSearch(
   listEl: HTMLElement,
   items: SearchItem[],
   onSelect: (item: SearchItem) => void,
-): void {
+): { setItems(next: SearchItem[]): void } {
   let current: SearchItem[] = [];
 
   const hide = (): void => {
@@ -75,7 +77,8 @@ export function initSearch(
     }
     const expanded = SEARCH_ALIASES[q.toLowerCase()] ?? q;
     const lq = expanded.toLowerCase();
-    const matched = items.filter((it) => it.name.includes(expanded) || localName(it.name).toLowerCase().includes(lq));
+    const matched = items.filter((it) => it.name.includes(expanded) || localName(it.name).toLowerCase().includes(lq)
+      || it.searchTerms?.some(term=>term.toLowerCase().includes(lq)));
     matched.sort((a, b) => {
       const sa = a.name.startsWith(expanded) ? 0 : 1;
       const sb = b.name.startsWith(expanded) ? 0 : 1;
@@ -99,6 +102,9 @@ export function initSearch(
     }
   });
   input.addEventListener("blur", () => setTimeout(hide, 120));
+  return {
+    setItems(next: SearchItem[]): void { items = next; hide(); },
+  };
 }
 
 /** 从楼栋网格构造搜索条目 */

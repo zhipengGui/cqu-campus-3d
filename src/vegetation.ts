@@ -85,12 +85,21 @@ function blob(sx: number, sy: number, sz: number, x: number, y: number, z: numbe
   return g;
 }
 
+export interface CampusGardenNames {
+  lakeName?: string;
+  lotusName?: string;
+  aquaticName?: string;
+  walkName?: string;
+  pineRole?: boolean;
+}
+
 export function buildVegetation(
   parent: THREE.Object3D,
-  opts: { green: Area[]; roads: Road[]; water: Area[]; buildings: Building[] },
+  opts: { green: Area[]; roads: Road[]; water: Area[]; buildings: Building[]; gardens?: CampusGardenNames },
 ): VegetationSystem {
   const rng = mulberry32(20261024);
   const { green, roads, water, buildings } = opts;
+  const gardens = opts.gardens ?? {};
   const vegGreen = green as VegArea[];
 
   const roadHit = (x: number, y: number, margin: number): boolean => {
@@ -148,7 +157,7 @@ export function buildVegetation(
   };
 
   // ---- 环湖专类园：缙湖岸线按周长 6m 步进采样，质心角分 7 扇区，外扩 4-19m 种植带 ----
-  const jin = water.find((w) => w.name === "缙湖");
+  const jin = gardens.lakeName ? water.find((w) => w.name === gardens.lakeName) : undefined;
   if (jin?.outers[0]) {
     const ring = jin.outers[0];
     const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
@@ -255,7 +264,7 @@ export function buildVegetation(
     }
   };
   for (const r of roads) {
-    if (r.name === "含笑漫步道") hedgeAlong(r.pts, 1.8, 1.05, "michelia", 1.5, 2.1);
+    if (gardens.walkName && r.name === gardens.walkName) hedgeAlong(r.pts, 1.8, 1.05, "michelia", 1.5, 2.1);
   }
 
   // ---- 私有绿篱/花境（manual_green role:hedge/flowerbed）----
@@ -349,12 +358,13 @@ export function buildVegetation(
 
   // ---- 荷苑荷叶荷花 + 水生植物展示区芦苇 ----
   for (const w of water) {
-    if (w.name !== "荷苑" && w.name !== "水生植物展示区") continue;
+    const isAquatic = w.name === gardens.lotusName || w.name === gardens.aquaticName;
+    if (!isAquatic) continue;
     const o = w.outers[0];
     if (!o) continue;
     const cx = o.reduce((s, p) => s + p[0], 0) / o.length;
     const cy = o.reduce((s, p) => s + p[1], 0) / o.length;
-    const isLotus = w.name === "荷苑";
+    const isLotus = w.name === gardens.lotusName;
     let area = 0;
     for (let i = 0; i < o.length; i++) {
       area += o[i][0] * o[(i + 1) % o.length][1] - o[(i + 1) % o.length][0] * o[i][1];
@@ -395,7 +405,7 @@ export function buildVegetation(
 
   // ---- 松林公园林下蕨类（manual_green role:pine 区域内）----
   for (const g of vegGreen) {
-    if (g.role !== "pine") continue;
+    if (g.role !== "pine" || !gardens.pineRole) continue;
     const o = g.outers[0];
     if (!o) continue;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;

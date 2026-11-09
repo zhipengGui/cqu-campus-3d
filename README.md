@@ -1,16 +1,20 @@
-# 重庆大学虎溪校区 3D 地图
+# 重庆大学 3D 校园地图
 
-在浏览器中漫游虎溪校园，探索教学楼、图书馆、湖泊与运动场地。这是一张支持旋转、缩放和交互导览的三维校园地图，可通过电脑或手机访问。
+在浏览器中探索重庆大学虎溪校区与沙坪坝 A 区。地图支持旋转、缩放、地点搜索和交互导览，可通过电脑或手机访问。
 
-**[打开地图 · 在线体验 →](https://zhipenggui.github.io/cqu-campus-3d/)**
+**[打开虎溪校区](https://zhipenggui.github.io/cqu-campus-3d/)** · **[打开沙坪坝 A 区](https://zhipenggui.github.io/cqu-campus-3d/?campus=shapingba)**
 
-> ⚠️ **版权声明**：本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利。**不得复制、修改或再发布本项目代码**（包括完整或部分）；如需使用，请[开 Issue 联系作者](https://github.com/zhipengGui/cqu-campus-3d/issues/new?template=request-license.md)获取授权。
->
-> All rights reserved © 2026 ZhipengGui. Do not copy, modify or redistribute this project (in whole or in part); open an issue to request a license.
+原创代码与模型 © 2026 ZhipengGui，保留所有权利。使用授权请通过 GitHub Issues 联系作者。第三方数据和解码器遵循下文所列许可。
 
 [项目源码](https://github.com/zhipengGui/cqu-campus-3d) · [反馈问题与建议](https://github.com/zhipengGui/cqu-campus-3d/issues)
 
 ![虎溪校区三维地图全景](docs/screenshots/v9-campus.png)
+
+## 探索沙坪坝 A 区
+
+- 通过工具栏的「校」切换校区，或从上方直接打开 A 区。搜索主教学楼、第五教学楼、文字斋、民主湖、风雨操场或思群广场即可定位。
+- A 区包含地形、风雨操场的下沉看台与舞台、思群广场的台阶和挡墙，以及学生九舍、三食堂至美视电影学院一带的地坪起伏。建筑细部和局部标高为估算。
+- [打开沙坪坝 A、B、C 区平面地形总图](https://zhipenggui.github.io/cqu-campus-3d/?campus=shapingba&terrain=flat)。
 
 ## 探索虎溪
 
@@ -72,7 +76,7 @@ npm run build
 
 产物位于 `dist/`。部署到子目录时，通过环境变量 `BASE_PATH` 设置站点路径；本项目 GitHub Pages 使用 `/cqu-campus-3d/`。
 
-本仓库提供可直接运行和构建的地图展示端、必要场景资源与前端测试。离线建模、场景制作工具及内部维护记录在本地单独维护，不是运行本项目的前提。
+本仓库提供地图前端、运行用 GLB、渲染模块、场景数据和地形网格。Blender 工程、离线制作工具、原始照片、原始高程瓦片和内部核对资料由作者单独维护。
 
 ## 关于地图
 
@@ -81,8 +85,8 @@ npm run build
 ## 致谢与许可
 
 - 项目的视觉表现与实现参考了 [gxu-campus-3d](https://github.com/wcqqq1214/gxu-campus-3d)。
-- 本项目代码与模型版权归 © 2026 ZhipengGui 所有，保留所有权利：仅供学习与浏览，未经作者许可请勿复制、修改或再发布；如需使用请通过 [Issues](https://github.com/zhipengGui/cqu-campus-3d/issues) 联系作者。
-- All rights reserved © 2026 ZhipengGui. Code and models are provided for viewing and learning only; do not copy, modify or redistribute without the author's permission — open an issue to ask.
 - 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，遵循 ODbL。
+- A 区详细场景使用裁剪、重采样并局部调整的 FABDEM V1-2。署名 Neal、Hawker、Uhe、Paulo、Sosa、Savage 和 Sampson（2023），University of Bristol。派生网格遵循 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。[FABDEM 数据集](https://doi.org/10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn)
+- 基础地形使用 [Copernicus DEM GLO-30 Public](https://registry.opendata.aws/copernicus-dem/)。Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 provided under COPERNICUS by the European Union and ESA. All rights reserved.
 - 参考照片来自重庆大学公开图集，照片权利属于原权利人。
 - Draco 解码器采用 Apache License 2.0，详见 [public/draco](public/draco/)。

@@ -3,6 +3,7 @@ import type {RoadGraph} from './types';
 import {RoadRouter,type RoadSnap,type RoadRoute} from './routing.ts';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {resolveAccess} from './accessPoints.ts';
+import {subdividePath,type GroundHeight} from './terrain.ts';
 
 export interface NavEndpoint {snap:RoadSnap;label:string;place?:string}
 function marker(color:number):THREE.Mesh {
@@ -24,7 +25,11 @@ export class Navigator {
   private routeMesh:THREE.Group|null=null;
   private markerA=marker(0x2e9e4f);
   private markerB=marker(0xd23f31);
-  constructor(scene:THREE.Scene,graph:RoadGraph){this.scene=scene;this.router=new RoadRouter(graph);scene.add(this.markerA,this.markerB);}
+  private readonly heightAt?: GroundHeight;
+  constructor(scene:THREE.Scene,graph:RoadGraph,heightAt?:GroundHeight){
+    this.scene=scene;this.router=new RoadRouter(graph);this.heightAt=heightAt;
+    scene.add(this.markerA,this.markerB);
+  }
   setActive(v:boolean):void {this.active=v;if(!v)this.clearRoute();else this.recompute();}
   snap(x:number,z:number,maxDistance=140):RoadSnap|null {return this.router.snap(x,-z,maxDistance);}
   setStart(x:number,z:number,label='地图起点',maxDistance=140):boolean {return this.setEndpoint('start',x,z,label,maxDistance);}
@@ -53,7 +58,7 @@ export class Navigator {
   }
   recompute():void {
     this.clearDrawing();
-    for(const [endpoint,m]of [[this.start,this.markerA],[this.end,this.markerB]] as const){m.visible=!!endpoint;if(endpoint){const [x,y]=this.router.point(endpoint.snap);m.position.set(x,.4,-y);}}
+    for(const [endpoint,m]of [[this.start,this.markerA],[this.end,this.markerB]] as const){m.visible=!!endpoint;if(endpoint){const [x,y]=this.router.point(endpoint.snap);m.position.set(x,(this.heightAt?.(x,y)??0)+.4,-y);}}
     let status=this.start?'起点已设：点击楼栋或地面设置终点':this.end?'终点已设：请设置起点':'点击道路或地面设置起点';
     if(this.start&&this.end){
       const route=this.router.route(this.start.snap,this.end.snap);
@@ -63,8 +68,10 @@ export class Navigator {
         this.result=route;const root=new THREE.Group(),mat=new THREE.MeshBasicMaterial({color:0xff7a1a});
         // Each segment follows the road exactly; merge for a single draw call.
         const up=new THREE.Vector3(0,1,0),geometries:THREE.BufferGeometry[]=[];
-        for(let i=1;i<route.points.length;i++){
-          const a=new THREE.Vector3(route.points[i-1][0],.28,-route.points[i-1][1]),b=new THREE.Vector3(route.points[i][0],.28,-route.points[i][1]),d=b.clone().sub(a),length=d.length();
+        const points=this.heightAt?subdividePath(route.points):route.points;
+        const point=([x,y]:[number,number])=>new THREE.Vector3(x,(this.heightAt?.(x,y)??0)+.28,-y);
+        for(let i=1;i<points.length;i++){
+          const a=point(points[i-1]),b=point(points[i]),d=b.clone().sub(a),length=d.length();
           if(length<1e-6)continue;
           const g=new THREE.CylinderGeometry(.7,.7,length,6);g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up,d.normalize()));const center=a.add(b).multiplyScalar(.5);g.translate(center.x,center.y,center.z);geometries.push(g);
         }

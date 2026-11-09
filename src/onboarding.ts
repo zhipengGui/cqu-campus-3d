@@ -59,7 +59,7 @@ const STEPS: Step[] = [
 
 const LS_KEY = "huxi-onboarded";
 
-export function initOnboarding(i18n: OnboardingI18n): void {
+export function initOnboarding(i18n: OnboardingI18n, autoStart = true): void {
   const root = () => document.querySelector("#onboard");
   if (!root()) {
     const el = document.createElement("div");
@@ -119,5 +119,5 @@ export function initOnboarding(i18n: OnboardingI18n): void {
   // 首次访问自动弹出
   let seen = false;
   try { seen = !!localStorage.getItem(LS_KEY); } catch { seen = false; }
-  if (!seen) setTimeout(show, 300);
+  if (!seen && autoStart) setTimeout(show, 300);
 }

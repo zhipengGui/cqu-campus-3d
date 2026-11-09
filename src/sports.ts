@@ -9,6 +9,8 @@ const FLOOR=.15, PAINT=.19;
 const COLORS:Record<string,number>={
   mark:0xf5f3e7,courtGreen:0x347e69,courtKey:0xbd6447,apron:0x527d70,
   turf:0x438658,stripe:0x4b925f,tennis:0x407d91,badminton:0x537f83,
+  siqunTrack:0x4c638e,siqunTrackAlt:0x465d87,
+  siqunNewTrack:0x398dbd,siqunNewTrackAlt:0x3688b6,
   sand:0xd9c38f,pool:0x438fae,lane:0x285e7a,track:0xba563f,trackAlt:0xb7543e,walk:0xbdbca9,
   frame:0x246752,metal:0x879593,orange:0xe5762c,glass:0xa7c7c6,net:0xb5c8c2,
 };
@@ -157,21 +159,27 @@ export function sportsSiteAreas(areas:Area[]):Area[] {
   const ring=oval(r+1.3,half).map(([x,v])=>[f.cx+x*c-v*s,f.cy+x*s+v*c] as Pt);
   return [{id:'confirmed-main-track',name:'田径场',kind:'track',sport:'running',outers:[ring],inners:[]}];
 }
-function track(b:Buckets,width:number,length:number,pitchWidth?:number,pitchLength?:number):void {
+function track(b:Buckets,width:number,length:number,pitchWidth?:number,pitchLength?:number,siqun=false,refined=false):void {
   const outer=width/2-1,inner=outer-8*1.22,half=Math.max(0,length/2-outer);
   if(inner<10)return;
   polygon(b,'apron',oval(outer+1.3,half),FLOOR-.025);
   for(let lane=0;lane<8;lane++) {
     const p=oval(inner+lane*1.22,half),q=oval(inner+(lane+1)*1.22,half);
-    for(let i=0;i<p.length;i++)polygon(b,lane%2?'trackAlt':'track',[p[i],q[i],q[(i+1)%p.length],p[(i+1)%p.length]]);
+    const color = refined ? (lane%2?'siqunNewTrackAlt':'siqunNewTrack')
+      : siqun ? (lane%2?'siqunTrackAlt':'siqunTrack') : (lane%2?'trackAlt':'track');
+    for(let i=0;i<p.length;i++)polygon(b,color,[p[i],q[i],q[(i+1)%p.length],p[(i+1)%p.length]]);
   }
   polygon(b,'turf',oval(inner,half),FLOOR-.01);
   for(let lane=0;lane<=8;lane++){const p=oval(inner+lane*1.22,half);p.forEach((a,i)=>line(b,a,p[(i+1)%p.length],.075));}
+  if(refined) for(const side of [-1,1]) {
+    line(b,[side*inner,-half+5],[side*outer,-half+5],.105);
+    line(b,[side*inner,-half+4.5],[side*outer,-half+4.5],.068);
+  }
   football(b,pitchWidth??Math.min(64,inner*1.8),pitchLength??Math.min(100,half*2+inner*.55));
 }
 
 /** A single local frame per footprint, followed by material batching. */
-export function buildSportsMarks(parent:THREE.Object3D,areas:Area[]):void {
+export function buildSportsMarks(parent:THREE.Object3D,areas:Area[],siqunPreview=false,siqunRefined=false):void {
   const all=bucket(),counts:Record<string,number>={};
   const confirmed=areas.filter(detailedSport).map(a=>sportsFrame(a.outers[0])).filter(f=>!!f);
   for(const a of areas.filter(a=>a.kind==='pitch'&&!a.sport)) {
@@ -194,7 +202,9 @@ export function buildSportsMarks(parent:THREE.Object3D,areas:Area[]):void {
     if(sport==='basketball'&&f.width<=18&&f.length<=34) {
       scale=Math.min(1,f.width/15,f.length/28);basketball(b);
     } else if(sport==='soccer') {
-      if(a.id===VERIFIED_TRACK.pitchId) {
+      if(siqunPreview && a.id===412480742) {
+        track(b,98,195,f.width-2,f.length-3,true,siqunRefined);counts.track=(counts.track??0)+1;
+      } else if(a.id===VERIFIED_TRACK.pitchId) {
         track(b,VERIFIED_TRACK.width,VERIFIED_TRACK.length,f.width-2,f.length-3);counts.track=(counts.track??0)+1;
       } else football(b,Math.max(10,f.width-2),Math.max(16,f.length-3));
     }

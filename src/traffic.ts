@@ -111,7 +111,7 @@ function sampleRouteAt(r: SampledRoute, dist: number): { x: number; y: number; t
 
 export function buildTraffic(
   parent: THREE.Object3D,
-  opts: { roads: Road[]; lakeOutline: Pt[] | null; hotspots?: { x: number; y: number; r: number; hw: number; hd: number }[] },
+  opts: { roads: Road[]; lakeOutline: Pt[] | null; heightAt?: (x: number, y: number) => number; hotspots?: { x: number; y: number; r: number; hw: number; hd: number }[] },
 ): TrafficSystem {
   const rng = mulberry32(20261025);
   const group = new THREE.Group();
@@ -306,7 +306,7 @@ export function buildTraffic(
       e.set(0, Math.atan2(cur.tx, -cur.ty), 0);
       q.setFromEuler(e);
       const bob = isWalker && st.bob !== undefined ? Math.abs(Math.sin(dist * 0.55 + st.bob)) * 0.045 : 0;
-      v.set(px, bob, -py);
+      v.set(px, (opts.heightAt?.(px, py) ?? 0) + bob, -py);
       m.compose(v, q, s1);
       mesh.setMatrixAt(n, m);
       n++;

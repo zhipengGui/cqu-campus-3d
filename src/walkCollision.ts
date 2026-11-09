@@ -1,5 +1,6 @@
 import type {SceneData} from './types';
 import type {RoadPoint} from './routing';
+import type {GroundHeight} from './terrain';
 import {inCampus,distanceToBoundary} from './campusClip.ts';
 
 type Region={ring:RoadPoint[];holes:RoadPoint[][]};
@@ -7,7 +8,7 @@ type Segment={a:RoadPoint;b:RoadPoint;width:number};
 type Cell={blocks:Set<Region>;paving:Set<Region>;roads:Set<Segment>};
 
 /** 自由视角使用的碰撞能力面（WalkWorld 实现之） */
-export interface FlyWorld { moveFly(position:RoadPoint,delta:RoadPoint,alt:number):RoadPoint };
+export interface FlyWorld { moveFly(position:RoadPoint,delta:RoadPoint,alt:number):RoadPoint; heightAt?: GroundHeight };
 function segmentDistance(p:RoadPoint,a:RoadPoint,b:RoadPoint):number {
   const x=b[0]-a[0],y=b[1]-a[1],l=x*x+y*y,t=l?Math.max(0,Math.min(1,((p[0]-a[0])*x+(p[1]-a[1])*y)/l)):0;
   return Math.hypot(p[0]-a[0]-x*t,p[1]-a[1]-y*t);
@@ -18,14 +19,19 @@ function edgeDistance(p:RoadPoint,r:Region):number {return Math.min(distanceToBo
 /** Flat outdoor walking only: mapped roads/paving, with building, water and campus barriers. */
 export class WalkWorld {
   private cells=new Map<string,Cell>();
-  private boundary:RoadPoint[]|undefined;
+  private boundaries:RoadPoint[][] = [];
   /** 自由视角用：带顶高的建筑/水面块（x,y 米坐标 → [{ring,holes,topY}]） */
   private flyCells=new Map<string,{ring:RoadPoint[];holes:RoadPoint[][];topY:number}[]>();
-  constructor(data:Pick<SceneData,'boundary'|'buildings'|'roads'|'paving'|'water'>){
-    this.boundary=data.boundary?.pts;
+  readonly heightAt: GroundHeight;
+  constructor(data:Pick<SceneData,'boundary'|'boundaries'|'buildings'|'roads'|'paving'|'water'>,
+    heightAt: GroundHeight = () => 0, baseOf: (building: SceneData['buildings'][number]) => number = () => 0){
+    this.heightAt=heightAt;
+    this.boundaries=((data as {boundaries?:RoadPoint[][]}).boundaries?.length
+      ? (data as {boundaries?:RoadPoint[][]}).boundaries as RoadPoint[][]
+      : (data.boundary ? [data.boundary.pts as RoadPoint[]] : []));
     for(const b of data.buildings.filter(b=>b.inside) as (SceneData['buildings'][number])[]){
       this.index({ring:b.polygon,holes:b.holes},'blocks');
-      this.indexFly(b.polygon,b.holes,(b as {height?:number}).height??10);
+      this.indexFly(b.polygon,b.holes,baseOf(b)+(b.height??10));
     }
     for(const a of data.water)for(const ring of a.outers){
       this.index({ring,holes:a.inners},'blocks');
@@ -83,7 +89,7 @@ export class WalkWorld {
   }
   isFree(p:RoadPoint,radius=.3):boolean {
     if(!p.every(Number.isFinite)||!Number.isFinite(radius)||radius<=0)return false;
-    if(this.boundary&&(!inCampus(p,this.boundary)||distanceToBoundary(p,this.boundary)<radius))return false;
+    if(this.boundaries.length){let ok=false;for(const b of this.boundaries){if(inCampus(p,b)){ok=distanceToBoundary(p,b)>=radius;break;}}if(!ok)return false;}
     const blocks=new Set<Region>(),paving=new Set<Region>(),roads=new Set<Segment>();
     for(let x=Math.floor((p[0]-radius)/32);x<=Math.floor((p[0]+radius)/32);x++)for(let y=Math.floor((p[1]-radius)/32);y<=Math.floor((p[1]+radius)/32);y++){
       const cell=this.cells.get(x+','+y);if(cell){for(const a of cell.blocks)blocks.add(a);for(const a of cell.paving)paving.add(a);for(const a of cell.roads)roads.add(a);}

@@ -17,7 +17,7 @@ export const D: Record<string, Pair> = {
   watermark: { zh: "重庆大学虎溪校区 3D 地图 · zhipengGui", en: "CQU Huxi Campus 3D Map · zhipengGui" },
   exportBrand: { zh: "重庆大学虎溪校区 3D 地图 · zhipengGui", en: "CQU Huxi Campus 3D Map · zhipengGui" },
 
-  bootTitle: { zh: "正在打开虎溪校园", en: "Opening Huxi campus…" },
+  bootTitle: { zh: "正在打开校园地图", en: "Opening campus map…" },
   bootNote: { zh: "加载校园与地标模型，首次打开请稍候。", en: "Loading campus and landmark models — please wait a moment on first visit." },
   bootRetry: { zh: "重新加载", en: "Reload" },
   bootFailTitle: { zh: "地图暂时无法打开", en: "The map failed to open" },
@@ -71,6 +71,7 @@ export const D: Record<string, Pair> = {
   tourArchSub: { zh: "精建地标串游", en: "The detailed landmarks" },
   followHint: { zh: "正在跟随 · 拖动视角或按 Esc 退出", en: "Following · drag or press Esc to exit" },
   tlFly: { zh: "自由视角", en: "Free flight" },
+  tlCampus: { zh: "切换校区", en: "Switch campus" },
   flyKeys: { zh: "WASD 移动 · <b>Space</b> 上升 · <b>C</b> 下降 · <b>Shift</b> 加速 · 滚轮调速 · <b>Esc</b> 退出", en: "WASD move · <b>Space</b> up · <b>C</b> down · <b>Shift</b> boost · scroll speed · <b>Esc</b> exit" },
   flyExit: { zh: "退出", en: "Exit" },
   flyEdge: { zh: "已到地图边缘", en: "Edge of the map" },
@@ -115,6 +116,7 @@ export const D: Record<string, Pair> = {
   kindWater: { zh: "湖泊", en: "Lake" },
   kindGate: { zh: "校门", en: "Gate" },
   kindSports: { zh: "运动场地", en: "Sports" },
+  kindResidential: { zh: "周边建筑 · 居民楼", en: "Surroundings · residential" },
   tagLake: { zh: "湖", en: "Lake" },
   tagGate: { zh: "门", en: "Gate" },
   tagCourt: { zh: "场", en: "Field" },
@@ -172,6 +174,18 @@ export const D: Record<string, Pair> = {
 
 // ---- 地名（中文键 → 英文显示）----
 const NAMES: Record<string, string> = {
+  "A区正门": "Campus A Main Gate",
+  "A区学生九舍": "Campus A Student Dormitory 9",
+  风雨操场: "Wind and Rain Amphitheatre",
+  思群广场: "Siqun Square",
+  第五教学楼: "Teaching Building No. 5",
+  文字斋: "Wenzi Zhai",
+  "学生三食堂": "Student Dining Hall 3",
+  "美视电影学院剧场": "Meishi Film School Theatre",
+  钟塔: "Clock Tower",
+  重庆大学主教学楼: "Main Teaching Building",
+  民主湖: "Minzhu Lake",
+  理工馆: "Science and Engineering Library (Yifu Building)",
   图书馆: "Library",
   第一教学楼: "Teaching Bldg 1",
   信息技术科研楼: "IT Research Bldg",

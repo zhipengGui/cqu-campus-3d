@@ -7,7 +7,74 @@ export interface PlaceInfo {
   photo?: string;
 }
 
+export const REFINEMENT_INFO: Record<string, PlaceInfo> = {
+  第五教学楼: {
+    desc: "精修五教正门的石柱柱头、基座、檐口和阳台栏杆。保留高主楼、低翼楼和灰瓦坡屋顶，构件尺寸暂估。",
+    descEn: "The entrance capitals, pedestals, cornice and balustrade are refined. The taller central block and lower tiled wings retain their earlier massing. Dimensions are approximate.",
+  },
+  文字斋: {
+    desc: "参考 2026 年修缮初验照片精修门廊、椽头、朱红柱和台基。柱距与檐高暂估。",
+    descEn: "Rafter ends, red posts, plinth and porch details follow the 2026 conservation photographs. Spacing and eave heights are approximate.",
+  },
+  风雨操场: {
+    desc: "在下沉半环看台和舞台基础上补上雨棚侧桁架、前横梁和校史墙。看台排数、墙位与标高暂估。",
+    descEn: "Canopy trusses, the front lattice and the campus history wall complement the sunken amphitheatre. Row count, wall placement and elevations are approximate.",
+  },
+  思群广场: {
+    desc: "参考改造后实拍调整跑道为亮蓝色，补上看台通道、白色分区编号和张拉罩棚。道数与局部地坪暂估。",
+    descEn: "Photographs after the resurfacing inform the blue track, stair aisles, white section numbers and fabric canopy. Lane count and local grades are approximate.",
+  },
+};
+
 export const PLACE_INFO: Record<string, PlaceInfo> = {
+  第五教学楼: {
+    desc: "A 区五教。预览按校方照片还原灰瓦坡屋顶、黄墙红窗和高主楼、低翼楼的层次。屋面和窗间尺寸为影像估算。",
+    descEn: "Campus A Teaching Building No. 5. University photographs inform the grey tile roofs, yellow walls, red windows and the lower wings. Dimensions are approximate.",
+  },
+  文字斋: {
+    desc: "预览依据校方 2026 年修缮初验照片和资料，重建工字形体量、青瓦歇山顶、青砖和朱红柱开敞檐廊。构件尺寸为影像估算。",
+    descEn: "The model follows the university's 2026 conservation inspection photographs and notes, including the I-shaped plan, grey tiled hip-and-gable roofs and the open veranda with red columns. Dimensions are approximate.",
+  },
+  风雨操场: {
+    desc: "体育馆旁的半环形露天剧场。根据校方照片重建下沉场地、阶梯看台、放射形通道和曲面雨棚。台阶尺寸及标高暂估。",
+    descEn: "A sunken, semicircular theatre beside the sports hall. Seating, aisles and the curved canopy follow university photographs. Step dimensions and elevations are approximate.",
+  },
+  思群广场: {
+    desc: "设有跑道、足球场、弯道看台和有顶看台。周边按影像分段建模，台阶、挡墙尺寸和场地标高暂估。",
+    descEn: "Track, football pitch and segmented seating including a covered grandstand. Steps, retaining walls and field elevations are approximate.",
+  },
+  "A区正门": {
+    desc: "沙坪坝校区 A 区临沙正街的正门，靠近重庆大学地铁站 3 号口。地图标记为进场道路上的参考点。",
+    descEn: "The main entrance to Campus A on Shazheng Street, near Exit 3 of Chongqing University metro station. The marker shows an approximate point on the entrance road.",
+  },
+  "A区学生九舍": {
+    desc: "校方总平面图与影像将九舍定位在复合楼的东南翼。预览按屋面转角拆出九舍，内部产权分界与入口地坪待核。",
+    descEn: "The campus plan and aerial imagery locate Dorm 9 in the southeast wing. The preview divides the footprint at the roof corners. Internal boundaries and entrance levels await verification.",
+  },
+  "学生三食堂": {
+    desc: "按校方总平面图和影像建模为复合楼西北侧体量。楼层、立面和入口地坪仍待核。",
+    descEn: "The campus plan and aerial imagery place the dining hall in the northwest portion of the building complex. Storeys, façades and entrance levels await verification.",
+  },
+  "美视电影学院剧场": {
+    desc: "局部预览保留剧场的独立建筑轮廓，按校方照片和影像补出鼓座与圆顶。屋顶尺寸和台地标高为暂估。",
+    descEn: "The corridor preview uses the mapped theatre footprint and models the drum and dome from university photography and aerial imagery. Roof dimensions and pad elevations are approximate.",
+  },
+  钟塔: {
+    desc: "位于 A 区校前区轴线上的纪念钟塔，建于 1989 年，高约 24 米。地图标记位于钟塔景观范围内。",
+    descEn: "A roughly 24-metre commemorative clock tower built in 1989 on the Campus A entrance axis. The marker indicates the clock tower precinct.",
+  },
+  重庆大学主教学楼: {
+    desc: "A 区主教学楼，位于民主湖北侧。地图沿用现有楼栋轮廓与模型。",
+    descEn: "The main teaching building of Campus A, north of Minzhu Lake. The map uses the existing building footprint and model.",
+  },
+  理工馆: {
+    desc: "A 区理工图书馆，由西侧逸夫楼与东楼组成。地图使用理工馆整体轮廓，近景为概略模型。",
+    descEn: "Campus A Science and Engineering Library, including the Yifu Building and the east wing. The simplified model follows the combined library footprint.",
+  },
+  民主湖: {
+    desc: "位于 A 区思群广场旁的校园湖泊，民主湖报告厅在湖畔。",
+    descEn: "A campus lake next to Siqun Square in Campus A, with the Minzhu Lake Lecture Hall on its shore.",
+  },
   田径场: {
     desc: '体育馆旁的田径场，跑道环绕足球内场。场区位置已结合校内反馈核对，跑道尺寸、道数及器材细节为比例估算。',
     descEn: 'The track-and-field ground beside the Gymnasium, with a running track around the football pitch. The location is verified with campus feedback; lane count and equipment are approximate.',

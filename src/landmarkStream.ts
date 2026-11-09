@@ -6,6 +6,24 @@ import type { Building } from "./types";
  *  双并发后台拉取，到位后替换回退模型；相机大幅移动时重排未加载队列。
  *  near 档依旧由 updateDetailAssets 按距离懒加载（原有机制）。 */
 
+
+/** 释放一个组内全部 GPU 资源（几何/材质/贴图/实例缓冲） */
+export function disposeGroup(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const g = o as THREE.Mesh & { geometry?: THREE.BufferGeometry };
+    if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
+    g.geometry?.dispose();
+    const mat = (o as THREE.Mesh).material;
+    if (mat) {
+      const mats = Array.isArray(mat) ? mat : [mat];
+      for (const m of mats as (THREE.Material & { map?: THREE.Texture })[]) {
+        m.map?.dispose();
+        m.dispose();
+      }
+    }
+  });
+}
+
 export interface LandmarkDef {
   asset: string;
   building: Building;
@@ -17,12 +35,14 @@ export interface LandmarkStreamOpts {
   center: THREE.Vector3; // 观察参考点（初始 home target）
   load: (asset: string, b: Building) => Promise<THREE.Group | null>;
   onSwap: (asset: string, root: THREE.Group, fallback: THREE.Group) => void;
+  isCurrent?: () => boolean;
   concurrency?: number;
   onProgress?: (loaded: number, total: number) => void;
 }
 
 export function streamLandmarkGLBs(defs: LandmarkDef[], opts: LandmarkStreamOpts): (center: THREE.Vector3) => void {
   const { parent, load, onSwap } = opts;
+  const isCurrent = opts.isCurrent ?? (() => true);
   const concurrency = opts.concurrency ?? 2;
   const pending: LandmarkDef[] = [];
   const active = new Set<string>();
@@ -43,12 +63,15 @@ export function streamLandmarkGLBs(defs: LandmarkDef[], opts: LandmarkStreamOpts
   resort();
 
   const pump = (): void => {
+    if (!isCurrent()) return;
     while (active.size < concurrency && pending.length) {
       const def = pending.shift()!;
       active.add(def.asset);
       load(def.asset, def.building).then((root) => {
-        if (root) {
+        if (root && !isCurrent()) disposeGroup(root);
+        else if (root) {
           parent.remove(def.fallback);
+          disposeGroup(def.fallback); // 参数化回退组的几何/材质释放（防累积）
           parent.add(root);
           onSwap(def.asset, root, def.fallback);
         }

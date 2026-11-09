@@ -36,7 +36,7 @@ export class Walking implements LockOwner {
     const damping=o.enableDamping;o.enableDamping=false;o.update();o.enableDamping=damping;o.enabled=false;
     this.active=true;this.lockDegraded=false;this.keys.clear();c.clearViewOffset();c.fov=60;c.near=.1;c.far=4000;c.updateProjectionMatrix();
     this.stride=0;
-    c.position.set(point[0],this.eyeHeight,-point[1]);
+    c.position.set(point[0],this.world.heightAt(...point)+this.eyeHeight,-point[1]);
     const direction=new THREE.Vector3(lookAt[0]-point[0],0,-lookAt[1]+point[1]);if(direction.lengthSq()<.01)direction.set(0,0,-1);
     c.lookAt(c.position.clone().add(direction));this.update(0);this.changed(true);
     this.lock.request(this);
@@ -67,7 +67,7 @@ export class Walking implements LockOwner {
       this.stride+=step;
       // 行走起伏：步频随速度，幅度 4.5cm
       const bob=Math.abs(Math.sin(this.stride*1.9))*.045;
-      c.position.set(x,this.eyeHeight+bob,-north);
+      c.position.set(x,this.world.heightAt(x,north)+this.eyeHeight+bob,-north);
     }
     this.orbit.target.copy(c.position).addScaledVector(forward,10);
   }

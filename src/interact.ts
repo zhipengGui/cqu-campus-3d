@@ -18,6 +18,7 @@ const SRC_ZH: Record<string, string> = {
   "tag:levels": "按 OSM 层数推算",
   default: "按占地面积估算（可在 data/height_overrides.json 校准）",
   override: "人工校准",
+  manual: "卫星判读（位置/轮廓经 z19 核实）",
 };
 
 export interface BuildingUserData {
