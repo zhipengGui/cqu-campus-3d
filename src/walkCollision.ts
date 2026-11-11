@@ -1,4 +1,4 @@
-import type {SceneData} from './types';
+import type {Area,SceneData} from './types';
 import type {RoadPoint} from './routing';
 import type {GroundHeight} from './terrain';
 import {inCampus,distanceToBoundary} from './campusClip.ts';
@@ -24,7 +24,8 @@ export class WalkWorld {
   private flyCells=new Map<string,{ring:RoadPoint[];holes:RoadPoint[][];topY:number}[]>();
   readonly heightAt: GroundHeight;
   constructor(data:Pick<SceneData,'boundary'|'boundaries'|'buildings'|'roads'|'paving'|'water'>,
-    heightAt: GroundHeight = () => 0, baseOf: (building: SceneData['buildings'][number]) => number = () => 0){
+    heightAt: GroundHeight = () => 0, baseOf: (building: SceneData['buildings'][number]) => number = () => 0,
+    waterHeight: (area: Area) => number = () => 0){
     this.heightAt=heightAt;
     this.boundaries=((data as {boundaries?:RoadPoint[][]}).boundaries?.length
       ? (data as {boundaries?:RoadPoint[][]}).boundaries as RoadPoint[][]
@@ -35,7 +36,7 @@ export class WalkWorld {
     }
     for(const a of data.water)for(const ring of a.outers){
       this.index({ring,holes:a.inners},'blocks');
-      this.indexFly(ring,a.inners,0.2); // 水面几乎不挡飞行（仅贴水判定）
+      this.indexFly(ring,a.inners,waterHeight(a)+0.2);
     }
     for(const a of data.paving)for(const ring of a.outers)this.index({ring,holes:a.inners},'paving');
     for(const road of data.roads)for(let i=1;i<road.pts.length;i++){
@@ -89,7 +90,7 @@ export class WalkWorld {
   }
   isFree(p:RoadPoint,radius=.3):boolean {
     if(!p.every(Number.isFinite)||!Number.isFinite(radius)||radius<=0)return false;
-    if(this.boundaries.length){let ok=false;for(const b of this.boundaries){if(inCampus(p,b)){ok=distanceToBoundary(p,b)>=radius;break;}}if(!ok)return false;}
+    if(this.boundaries.length){let ok=false;for(const b of this.boundaries){if(inCampus(p,b)&&distanceToBoundary(p,b)>=radius){ok=true;break;}}if(!ok)return false;}
     const blocks=new Set<Region>(),paving=new Set<Region>(),roads=new Set<Segment>();
     for(let x=Math.floor((p[0]-radius)/32);x<=Math.floor((p[0]+radius)/32);x++)for(let y=Math.floor((p[1]-radius)/32);y<=Math.floor((p[1]+radius)/32);y++){
       const cell=this.cells.get(x+','+y);if(cell){for(const a of cell.blocks)blocks.add(a);for(const a of cell.paving)paving.add(a);for(const a of cell.roads)roads.add(a);}

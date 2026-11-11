@@ -404,7 +404,7 @@ function decomposeRects(poly: [number, number][]): DormRect[] {
   return merged;
 }
 
-function dormRoofParts(poly: [number, number][], height: number): {
+export function dormRoofParts(poly: [number, number][], height: number): {
   roofs: THREE.BufferGeometry[]; gables: THREE.BufferGeometry[];
 } | null {
   // 主朝向 = 最长边方向（兰园等斜置楼：轴对齐 bbox 会错位，坡顶在旋转坐标系里生成）

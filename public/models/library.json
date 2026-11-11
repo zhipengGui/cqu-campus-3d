@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -48.76018742007386,
-      -46.5,
-      -0.22000000000000003
+      -48.75999992013896,
+      -48.92,
+      0.0
     ],
     [
-      48.76016063645485,
-      42.27018548872426,
-      68.25000000000001
+      48.7599999413405,
+      42.9,
+      65.80000000000001
     ]
   ],
-  "triangles": 26450,
-  "bytes": 169636,
-  "materials": 8,
+  "triangles": 29930,
+  "bytes": 184660,
+  "materials": 9,
   "heightConfidence": "Official overall height; podium, fin spacing and wall placement estimated from photos"
 }

@@ -27,6 +27,22 @@ export const REFINEMENT_INFO: Record<string, PlaceInfo> = {
 };
 
 export const PLACE_INFO: Record<string, PlaceInfo> = {
+  虎溪科学中心: {
+    desc: "校方资料确认最高十层、47.7 米。按建设航拍与效果图重做十栋高低塔楼、三层裙楼、竖向白框和内庭院。各塔楼轮廓、层高和入口地坪为影像估算。",
+    descEn: "CQU documents a maximum of ten storeys and 47.7 m. Ten stepped towers, a three-storey podium, white fins and inner courts follow official imagery. Individual footprints, storey heights and entry levels are estimated.",
+  },
+  储能技术产教融合创新大楼: {
+    desc: "校方公布地上八层、高 35.85 米。参考环评定位与效果图重做双庭院、架空连接、V 形支撑和屋顶绿化；修正原有过小体量及冲突的手工宿舍占位。轮廓和地坪为估算，竣工投用状态待核。",
+    descEn: "CQU documents eight storeys above ground and 35.85 m. The EIA location and rendering guide the twin courts, raised link, V piers and planted roofs. The former undersized box and conflicting provisional dorms are corrected; outlines and grades are estimated, and opening status is unverified.",
+  },
+  荷园新食堂: {
+    desc: "新建项目完成形态预览。校方 2026 年 7 月资料确认地上三层、总高 16.7 米，计划 2027 年投用；本版不表示已经营业。两个采光井参考封顶航拍，外墙细节、位置和入口地坪为估算。",
+    descEn: "Preview of the intended completed building. CQU's July 2026 report confirms three above-ground storeys, 16.7 m and planned opening in 2027. Two light wells follow the construction aerial; facade details, placement and entry levels are estimated. This is not an operating canteen listing.",
+  },
+  西南部景观: {
+    desc: "参考校方 2026 年西南景观改造照片补充园路、弧形低坐凳、木座椅、灯杆和分层绿化。局部布局及微地形为展示估算，尚未按测绘图配准。",
+    descEn: "Garden paths, curved low seating, timber benches, lights and layered planting follow CQU's 2026 southwest landscape photographs. The local arrangement and microterrain are illustrative and have not been registered to a survey plan.",
+  },
   第五教学楼: {
     desc: "A 区五教。预览按校方照片还原灰瓦坡屋顶、黄墙红窗和高主楼、低翼楼的层次。屋面和窗间尺寸为影像估算。",
     descEn: "Campus A Teaching Building No. 5. University photographs inform the grey tile roofs, yellow walls, red windows and the lower wings. Dimensions are approximate.",
@@ -76,40 +92,56 @@ export const PLACE_INFO: Record<string, PlaceInfo> = {
     descEn: "A campus lake next to Siqun Square in Campus A, with the Minzhu Lake Lecture Hall on its shore.",
   },
   田径场: {
-    desc: '体育馆旁的田径场，跑道环绕足球内场。场区位置已结合校内反馈核对，跑道尺寸、道数及器材细节为比例估算。',
-    descEn: 'The track-and-field ground beside the Gymnasium, with a running track around the football pitch. The location is verified with campus feedback; lane count and equipment are approximate.',
+    desc: '体育馆旁的足球与田径场。参照校方航拍补充红色跑道、蓝色缓冲区、西侧小型白色膜棚、低平台及灯杆。现有场区位置保留，棚体、台阶和局部标高为估算。',
+    descEn: 'Football and athletics beside the gym. CQU aerials guide the red track, blue apron, small west-side tensile canopy, low platform and floodlights; detailed dimensions and local grades are estimated.',
   },
   室外球场区: {
     desc: '篮球、网球等室外运动场地集中区域。场地位置与朝向沿用地图轮廓，面层配色和器材细节为示意。',
     descEn: 'Concentrated outdoor courts for basketball, tennis and more. Positions follow the mapped outlines; surface colors and equipment are illustrative.',
   },
+  梅园运动场: {
+    desc: '校方清单包含田径、大小足球、篮球、网球、排球、羽毛球及50张乒乓球台。本版沿用已映射的各场轮廓，补充围栏和球台；细部器材及球台内部排布为估算。',
+    descEn: 'Mapped courts retained with fences and table-tennis facilities. CQU documents 50 tables; detailed equipment locations and table arrangement are estimated.',
+  },
+  松园运动场: {
+    desc: '校方资料列有两处泳池、10片篮球场、16片羽毛球场、排球与气排球各2片及16张乒乓球台。本版保留场区外轮廓，补齐原空白场地区域；未映射的内部分隔位置为估算。',
+    descEn: 'CQU lists two pools, ten basketball courts, sixteen badminton courts, four volleyball/soft-volleyball courts and sixteen tables. Outer mapped banks are retained; unmapped internal subdivisions are estimates.',
+  },
+  兰园运动场: {
+    desc: '沿用四片篮球场和八片羽毛球场的现有轮廓，按校方资料补入16张乒乓球台及外围围栏。球台布点、围栏入口和局部地坪为估算；室内网球馆待可靠轮廓确认后补充。',
+    descEn: 'Four mapped basketball and eight badminton courts, with sixteen documented tables and perimeter fences. Table positions, gates and ground grades are estimates; the indoor tennis hall awaits a verified footprint.',
+  },
   第一教学楼: {
-    desc: "云湖畔的主要教学楼，五层楼群通过连廊相互连接，围合出庭院。五层来自校方工程资料；模型总高与部分外观细节仍为估算。",
-    descEn: "A main teaching building by Cloud Lake — five storeys of interconnected wings joined by corridors around a courtyard. The height comes from university records; the model total and some facade details remain estimated.",
+    desc: "云湖畔的五层教学楼群，楼翼与连廊围合两处内院。五层来自校方工程资料，本版补充了底层柱廊、内院栏杆和入口台阶，楼高与立面细部尺寸仍为估算。",
+    descEn: "Five-storey teaching wings around two mapped courts by Cloud Lake. The storey count is documented by CQU. Colonnades, galleries and entry stairs are refined; total height and facade dimensions remain estimated.",
   },
   图书馆: {
-    desc: "虎溪校区地标，通体朱红的 12 层板楼呈“L”形临缙湖而立，获中国建筑工程鲁班奖，是校内主要的学习与研究空间。",
-    descEn: "The landmark of Huxi Campus: a vermilion 12-storey slab standing in an L-shape by Jin Lake. Winner of the China Construction Engineering Luban Award, it is the campus's main study and research space.",
+    desc: "临湖的校园地标，高层板楼承托于低层基座之上，竖向遮阳构件形成鲜明的红色立面。入口柱廊、台阶及屋顶校名架参考公开照片，细部尺寸为估算。",
+    descEn: "A lakeside landmark with a tall slab above a low podium and distinctive red vertical fins. The entrance colonnade, stairs and rooftop lettering frame follow published photographs; detailed dimensions are estimated.",
     photo: "photos/library.jpg",
   },
   信息技术科研楼: {
-    desc: "2022 年交付的信息类教学科研楼。白色框架、退后玻璃与穿孔铝板构成立面，连廊和庭院组织交流空间。模型总高仍按 OSM 层数推算。",
-    descEn: "IT teaching-and-research building delivered in 2022. White frames, recessed glazing and perforated aluminium panels form the facade, with bridges and courtyards organizing shared spaces. Total height still derived from OSM levels.",
+    desc: "白色外框、退后玻璃、穿孔遮阳板与下沉庭院构成教学科研空间。北侧钢连廊跨度 36 米、桁架高 9.4 米依据校方施工记录；整体楼高、层间距和局部地坪为估算。",
+    descEn: "White outer frames, recessed glazing, perforated screens and a sunken courtyard. The north steel bridge's 36 m span and 9.4 m truss are documented by CQU; overall height, storey spacing and local grades remain estimated.",
     photo: "photos/info.jpg",
   },
   体育馆: {
-    desc: "虎溪体育中心主场馆，“学位帽”造型——上部方整的钻石形屋盖、下部红砖曲线基座，内设比赛馆与球类训练区，是运动会与体测的主要场地。",
-    descEn: "The main venue of the Huxi Sports Center — a \"graduation-cap\" form with a faceted diamond roof over a curved red-brick base, hosting competitions, training and fitness tests.",
+    desc: "按校方照片精修外张金属屋盖、斜向格栅、采光带、玻璃门厅和西侧红砖台阶，并统一相邻三处附馆与体育街。整体楼高、附馆屋盖分格和入口标高为估算。",
+    descEn: "An outward-sloping metal roof, diagonal fins, roof lights, glazed entrance and broad west-side brick stairs follow CQU photographs. Three adjacent halls and the sports street share one model; heights and fine dimensions remain estimated.",
     photo: "photos/gym.jpg",
   },
   学生活动中心: {
-    desc: "弧形新月状建筑，社团活动与文化演出的主场地，内设报告厅常举办讲座与晚会。",
-    descEn: "A crescent-shaped building — the main venue for club activities and cultural performances, with a lecture hall for talks and evening shows.",
+    desc: "红色弧形楼体、深窗洞与底层玻璃门厅。本版撤回按坐标线误改的整片白色楼翼和额外台阶，保留原有曲线轮廓。楼高与未见立面细节为估算。",
+    descEn: "Red curved wings with recessed windows and a glazed base. This version removes the arbitrary white-wing split and unsupported extra stairs, preserving the mapped curved outline. Heights and unseen details remain estimated.",
     photo: "photos/activity.jpg",
   },
+  艺术楼: {
+    desc: "由相互咬合的 L 形楼翼组成，灰砖立面、架空层、红色钢桁架连桥与连接平台组织教学和交流空间。建模参考建筑师发布的照片，翼楼高度和连桥落点为估算。",
+    descEn: "Interlocking L-shaped wings with grey-brick elevations, open ground floors, red truss bridges and shared decks. Modelled from the architect's published photographs; wing heights and bridge placement are estimated.",
+  },
   工科大楼: {
-    desc: "工科各系共用的教学实验楼群，多翼回字形平面围合出内院。（本栋造型为参数化演绎，欢迎提供实照校准）",
-    descEn: "Teaching and laboratory complex shared by engineering departments, with multi-wing courtyards. (The current model is a parametric interpretation; photos for calibration are welcome.)",
+    desc: "依据校方工科实验大楼交付照片精修，补入白色竖向框架、红色门框、高低楼翼和入口平台。校方使用资料能确认 C 栋二至七层，整体楼高、各翼尺寸和入口落点为估算。",
+    descEn: "Refined from CQU engineering-complex handover photographs, with white vertical frames, red portals, stepped wings and an entry platform. C wing levels 2–7 are documented; total height, wing dimensions and entry placement are estimated.",
   },
   东门: {
     desc: "门柱广场式校门：四座石砌门柱列于广场之上，旗杆林立，是虎溪校园的东侧出入口。",
@@ -148,21 +180,21 @@ export const PLACE_INFO: Record<string, PlaceInfo> = {
     photo: "photos/zonghelou.jpg",
   },
   理科楼: {
-    desc: "数理学科教学科研楼，2015 年竣工，获中国建筑工程鲁班奖，南北两区布置。",
-    descEn: "Teaching-and-research building for the mathematical and physical sciences, completed in 2015 and awarded the Luban Award; arranged in north and south zones.",
+    desc: "数理学科教学科研楼，本版统一精修主体、西翼和南翼，补入灰色板材、水平遮阳百叶、大台阶及入口平台。附楼层数、立面分格和局部标高为估算。",
+    descEn: "Science teaching and research buildings, refined as one main block with west and south wings. Grey panels, horizontal louvers and broad entry steps follow university photographs; annex levels and local dimensions remain estimated.",
     photo: "photos/likelou.jpg",
   },
   第一食堂: {
-    desc: '松园与竹园之间的两层大食堂，2025 年整体装修改造。橙红坡顶大体量依卫星影像复原；屋顶脊线、天窗与入口门斗为估算细节。',
-    descEn: 'A two-storey dining hall between Songyuan and Zhuyuan, fully refurbished in 2025. The orange-red pitched volume follows satellite imagery; ridge details, skylights and the entry canopy are estimated.',
+    desc: '竹园、梅园之间的第一食堂。校方2025年经营文件确认建筑共四层，一二层供餐、三四层用于学生活动；本版修正原两层模型，并精修窗洞、遮阳、屋顶排风及入口。总高度、屋顶细节和门厅位置为估算。',
+    descEn: 'CQU documents four storeys: dining on levels 1-2, activities on 3-4. This version corrects the earlier two-storey model; total height, roof and entrance details remain estimated.',
   },
   第二食堂: {
-    desc: '松园西侧的三层平顶食堂。白色框架立面与南向玻璃门厅依卫星影像与通用食堂形制复原，层高与机组为估算。',
-    descEn: 'A three-storey flat-roofed canteen west of Songyuan. The white frame facade and south glass lobby follow satellite imagery; storey heights and plant rooms are estimated.',
+    desc: '松园旁的第二食堂，本版按包含底部服务层的四层体量表现，补入立体窗洞、遮阳、入口雨棚和屋顶排风。完整层数、楼高和入口位置仍待完整外观核验。',
+    descEn: 'A four-level display volume including a lower service level, with recessed windows, shading and entrance canopy. Complete storey count, height and doorway await exterior verification.',
   },
   第三食堂: {
-    desc: '兰园以南的三层食堂，楼体随地块斜置。红橙平顶与深挑檐依卫星影像复原，层数来自 OSM。',
-    descEn: 'A three-storey canteen south of Lanyuan, rotated with its block. The orange flat roof and deep eaves follow satellite imagery; storeys from OSM.',
+    desc: '兰园与图书馆之间的第三食堂。保留斜置的现有轮廓和三层资料，精修深窗洞、挑檐、门厅与排风设施。总高度、立面细部及道路接入位置为估算。',
+    descEn: 'The mapped rotated outline and three levels are retained, with refined window reveals, eaves, entrance and exhausts. Detailed dimensions and the road approach are estimated.',
   },
   莲池: {
     desc: '图书馆东北侧的小水面，官方图集中的校园一景。周边绿化为示意分布。',
@@ -198,7 +230,7 @@ export const PLACE_INFO: Record<string, PlaceInfo> = {
     descEn: 'A large two-storey workshop-style training centre in the west. Deep eaves and gable glazing are inferred (moderate satellite roof evidence).',
   },
   校医院: {
-    desc: '北区校园诊所长楼。暖色平顶与底层柱廊为推测（卫星证据中等）。',
-    descEn: 'The long campus clinic in the north. Warm flat roof and ground-floor colonnade are inferred (moderate satellite evidence).',
+    desc: '校方科室表列有一、二层医疗空间。本版按两层门诊体量作保守估算，补充窗洞、门厅、绿色标识和步行接入口；完整长条楼是否含其他服务空间、楼高和入口位置仍需现场核对。',
+    descEn: 'CQU lists clinical services on levels 1 and 2. The model uses a conservative two-level volume with recessed windows, an entrance and a pedestrian approach. The full mapped bar, height and doorway remain provisional.',
   },
 };

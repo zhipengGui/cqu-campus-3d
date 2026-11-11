@@ -195,6 +195,8 @@ const NAMES: Record<string, string> = {
   理科楼: "Science Bldg",
   工科大楼: "Engineering Bldg",
   虎溪科学中心: "Science Center",
+  荷园新食堂: "New Heyuan Canteen",
+  西南部景观: "Southwest Landscape",
   储能技术产教融合创新大楼: "Energy-Storage Bldg",
   艺术楼: "Art Bldg",
   校医院: "Campus Clinic",
@@ -228,6 +230,9 @@ const NAMES: Record<string, string> = {
   医院门诊楼: "Hospital Outpatient Bldg",
   药学院研究中心: "Pharmacy Research Center",
   田径场: "Track & Field",
+  梅园运动场: "Meiyuan Sports Grounds",
+  松园运动场: "Songyuan Sports Grounds",
+  兰园运动场: "Lanyuan Sports Grounds",
   室外球场区: "Outdoor Courts",
 };
 const DORM_PREFIX: [RegExp, string][] = [

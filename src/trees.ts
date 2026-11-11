@@ -490,6 +490,8 @@ export function buildTrees(
         far.count = fi;
         near.instanceMatrix.needsUpdate = true;
         far.instanceMatrix.needsUpdate = true;
+        near.computeBoundingSphere();
+        far.computeBoundingSphere();
         if (near.instanceColor) near.instanceColor.needsUpdate = true;
         if (far.instanceColor) far.instanceColor.needsUpdate = true;
       }

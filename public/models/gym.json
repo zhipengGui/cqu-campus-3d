@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -47.79999931833392,
-      -46.96500000000003,
+      -63.894999999999996,
+      -93.28499981103376,
       0.0
     ],
     [
-      47.79999931833392,
-      44.44499931355586,
-      24.2
+      96.62999911358301,
+      46.22957229614258,
+      25.30998992919922
     ]
   ],
-  "triangles": 22248,
-  "bytes": 146964,
+  "triangles": 44934,
+  "bytes": 365472,
   "materials": 6,
-  "heightConfidence": "Overall height calibrated; roof taper, ribs and stairs estimated from available photo"
+  "heightConfidence": "Exterior and halls from CQU venue photographs. Total height, thresholds and roof details are estimated."
 }

@@ -57,9 +57,17 @@ const {resolveAccess}=await import('../src/accessPoints.ts');
 const data=JSON.parse(readFileSync(new URL('../public/data/scene.json',import.meta.url),'utf8'));
 const definitions=JSON.parse(readFileSync(new URL('../data/entrances.json',import.meta.url),'utf8'));
 const campus=new RoadRouter(data.graph),anchors=definitions.map((d:any)=>resolveAccess(d.name,[0,0],campus));
-assert.equal(anchors.length,11);assert.ok(anchors.every((a:any)=>a&&!a.confirmed&&a.label.includes('附近道路')),'unverified approaches must not be advertised as confirmed entrances');
+assert.equal(new Set(definitions.map((d:any)=>d.name)).size,definitions.length,'approach names must stay unique');
+assert.ok(anchors.every((a:any)=>a&&!a.confirmed&&/附近道路|暂估/.test(a.label)),'unverified approaches must not be advertised as confirmed entrances');
 let pairs=0;for(let i=0;i<anchors.length;i++)for(let j=i+1;j<anchors.length;j++){assert.ok(campus.route(anchors[i].snap,anchors[j].snap));pairs++;}
-assert.equal(pairs,55);console.log('PASS 11 explicitly unverified approaches and 55 campus landmark/gate routes');
+assert.equal(pairs,definitions.length*(definitions.length-1)/2);console.log('PASS explicitly unverified approaches and all campus landmark/gate routes',anchors.length,pairs);
+const m5=JSON.parse(readFileSync(new URL('../public/data/huxi-m5.json',import.meta.url),'utf8'));
+for(const entry of Object.values(m5.entries) as any[]) {
+  const access=resolveAccess(entry.name,[0,0],campus)!;
+  assert.ok(access&&!access.confirmed&&access.label.includes('暂估入口'));
+  const expected=data.graph.nodes[entry.graphNodes[0]];
+  assert.ok(Math.hypot(access.point[0]-expected[0],access.point[1]-expected[1])<.01,'M5 navigation must reach its displayed entry rather than an old road');
+}
 assert.deepEqual(routeTurns([[0,0],[100,0],[100,100]]),['前方左转']);
 assert.deepEqual(routeTurns([[0,0],[100,0],[100,-100]]),['前方右转']);
 assert.deepEqual(routeTurns([[0,0],[100,0],[200,0]]),[]);

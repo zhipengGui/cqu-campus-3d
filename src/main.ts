@@ -46,6 +46,8 @@ import { DayNight, applyBuildingEmissive, type PresetName } from "./dayNight";
 import { buildActivity, buildGate, buildGym, buildLikelou, buildLibrary, buildZonghe, gateLabel } from "./landmarks";
 import { applyStaticI18n, getLang, localName, onLangChange, setLang, t, tr, type Pair } from "./i18n";
 import { buildSportsMarks, sportsSiteAreas } from "./sports";
+import {buildHuxiDorm,buildLivingApproaches,livingWalkBounds,type LivingData} from './huxiLiving';
+import {buildHuxiNewArea,newAreaWalkBounds,type NewAreaData} from './huxiNewArea';
 import { Navigator } from "./navigation";
 import { collectPlaces, initPlacesPanel, type PlaceEntry, type PlacesPanel } from "./placesPanel";
 import { PLACE_INFO, REFINEMENT_INFO } from "./placesInfo";
@@ -59,6 +61,7 @@ import {WalkWorld} from './walkCollision';
 import {Walking} from './walking';
 import walkSpawns from '../data/walk_spawns.json';
 
+const MAP_VERSION = "m5";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const statsEl = document.querySelector<HTMLDivElement>("#hud-stats")!;
 const navStatusEl = document.querySelector<HTMLDivElement>("#nav-status")!;
@@ -70,6 +73,7 @@ let freeCam:FreeCam|null=null;
 let sharedLock:SharedPointerLock;
 let campus:CampusConfig = campusFromUrl(location.search);
 let activeTerrain: Terrain | null = null;
+let waterLevels: Record<string, number> = {};
 let terrainGround: THREE.Group | null = null;
 let terrainAttribution = "";
 const corridorRequested = new URLSearchParams(location.search).get("terrain") === "corridor";
@@ -101,6 +105,7 @@ const initialBatch = previewSpots.find(s => s.key === new URLSearchParams(locati
 const replacesBatchBuilding = (id: Building["id"]) => !!batchSpot(id) && id !== 1556523865;
 const groundHeight = (x: number, y: number): number => activeTerrain?.heightAt(x, y) ?? 0;
 function lakeHeight(id: number | string, x: number, y: number): number {
+  if (Object.hasOwn(waterLevels, String(id))) return waterLevels[String(id)];
   return id === 569007995 ? 0 : groundHeight(x, y);
 }
 function updateCampusUrl(): void {
@@ -111,12 +116,12 @@ function updateCampusUrl(): void {
 function renderCampusTitles(): void {
   const en = getLang() === "en";
   const name = en ? campus.nameEn : campus.nameZh;
-  const title = en ? `CQU · ${name} · 3D Map` : `重庆大学${name} 3D 地图`;
+  const title = (en ? `CQU · ${name} · 3D Map` : `重庆大学${name} 3D 地图`) + " · " + MAP_VERSION;
   document.title = title;
   document.querySelector("#brand")!.setAttribute("aria-label", title);
-  document.querySelector("#brand small")!.textContent = en ? `${name} · 3D Map` : `${name} · 三维校园地图`;
+  document.querySelector("#brand small")!.textContent = (en ? `${name} · 3D Map` : `${name} · 三维校园地图`) + " · " + MAP_VERSION;
   const hudTitle = tr(campus.hudTitle);
-  const terrainLabel = en ? "Terrain preview" : "地形预览";
+  const terrainLabel = en ? "New precinct" : "新建区";
   document.querySelector("#hud-head .title")!.textContent = inFourthPreview()
     ? (en ? "Explore Shapingba Campus A" : "探索沙坪坝 A 区")
     : inThirdPreview()
@@ -336,6 +341,12 @@ function tagAsset(g: THREE.Group, b: Building, root: THREE.Group): void {
       root.userData.court = new THREE.Vector3(o.userData.courtX, 2, -o.userData.courtNorth);
       root.userData.courtRadius = o.userData.courtRadius;
     }
+    if (typeof o.userData.entryX === "number") {
+      root.userData.batch4Entry = new THREE.Vector3(o.userData.entryX,o.userData.entryRise+2,-o.userData.entryNorth);
+      root.userData.batch4Front = [o.userData.entryNX,-o.userData.entryNY];
+      root.userData.m2WideEntry = o.userData.m2WideEntry;
+      root.userData.m4ApproachDistance = o.userData.m4ApproachDistance;
+    }
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     mesh.castShadow = true; mesh.receiveShadow = true;
@@ -407,6 +418,9 @@ async function loadLandmarkGLB(asset: string, b: Building, base: number): Promis
 }
 
 function updateDetailAssets(): void {
+  for(const root of buildingsRef?.children??[]) {
+    if(root.userData.housingDetail)root.userData.housingDetail.visible=resolveHighQuality() && camera.position.distanceTo(root.userData.housingCenter)<500;
+  }
   for(const mesh of gSports.children)if(['sports-net','sports-orange','sports-glass'].includes(mesh.name))
     mesh.visible=resolveHighQuality()&&camera.position.distanceTo(controls.target)<800;
   for (const entry of detailAssets) {
@@ -501,7 +515,11 @@ function openDetail(it: PlaceEntry): void {
   const info = (hasFourthBatch() && it.mesh ? batch4Info(it.mesh.userData.id) : undefined)
     ?? (hasThirdBatch() ? REFINEMENT_INFO[it.name] : undefined)
     ?? (hasSecondBatch() ? BATCH2_INFO[it.name] : undefined)
-    ?? (inBatchPreview() ? BATCH_INFO[it.name] : undefined) ?? PLACE_INFO[it.name];
+    ?? (inBatchPreview() ? BATCH_INFO[it.name] : undefined) ?? PLACE_INFO[it.name]
+    ?? (campus.id==='huxi' && it.mesh?.userData.style==='dorm' ? {
+      desc:'保留现有楼号、轮廓和坡顶方向，精修窗洞、窗框、阳台栏杆、门厅及接入小路。楼高、门厅和细部布局为估算，部分人工楼号与轮廓仍待逐栋核对。',
+      descEn:'Mapped names, outlines and roof directions are retained, with refined window reveals, balcony rails, entrance and approach. Heights and detail locations are estimated; some manual names and outlines await verification.'
+    }:undefined);
   document.querySelector("#pd-desc")!.textContent =
     (getLang() === "en" ? info?.descEn : info?.desc) ?? t("descFallback");
   const photo = document.querySelector("#pd-photo") as HTMLElement;
@@ -533,6 +551,9 @@ function focusBuilding(mesh: THREE.Mesh | null, view = "overview"): void {
   let dir = new THREE.Vector3(.70,.80,1.0);
   if (view === "facade") { dir.set(.2,.35,1); distance *= .82; }
   const id = mesh.userData.id;
+  if (campus.id === "huxi" && id === 485337678 && view !== "court") {
+    dir.set(-.65,view === "facade" ? .32 : .72,-1);
+  }
   if ((inHeritagePreview() || inBatchPreview()) && isHeritageBuilding(id) && (view === "overview" || view === "facade")) {
     const elevation = view === "facade" ? .23 : .56;
     dir = id === FIFTH_ID ? new THREE.Vector3(.22, elevation, -1) : new THREE.Vector3(-.58, elevation, 1);
@@ -560,14 +581,31 @@ function focusBuilding(mesh: THREE.Mesh | null, view = "overview"): void {
     if (view === "facade") {
       center.copy(root.localToWorld(root.userData.batch4Entry.clone()));
       distance *= .64;
+      if (root.userData.m2WideEntry) { dir.set(x,.55,z); distance=65; }
+      if (campus.id === 'huxi' && id === 14108774) { dir.set(x,.65,z); distance=32; }
+      if(root.userData.m4ApproachDistance) { dir.set(x,.6,z);distance=THREE.MathUtils.clamp(root.userData.m4ApproachDistance*.7,8,28); }
+      if(campus.id==='huxi'&&id===-4001){dir.set(x,.45,z);distance=25;}
     }
   }
+  if(campus.id==='huxi'&&id===-4210&&view==='overview')dir.set(.55,.72,1);
   if (view === "court") {
     dir.set(.35,1.2,.85); distance = Math.max(75,distance*.36);
     if (root.userData.court) center.copy(root.localToWorld((root.userData.court as THREE.Vector3).clone()));
     if (root.userData.courtRadius) {
       distance=THREE.MathUtils.clamp(root.userData.courtRadius*2.3,45,90);
-      center.y=(mesh.userData as BuildingUserData).height*.35;
+      center.y=root.position.y+(mesh.userData as BuildingUserData).height*.35;
+    }
+    if (root.userData.m2WideEntry) {
+      center.copy(root.localToWorld(root.userData.batch4Entry.clone()));
+      const [x,z] = root.userData.batch4Front as [number,number];
+      dir.set(x,.48,z);
+      distance = 130;
+      if (campus.id === 'huxi' && id === 14108774) { dir.y=.65; distance=32; }
+    }
+    if(root.userData.m4ApproachDistance) {
+      center.copy(root.localToWorld(root.userData.batch4Entry.clone()));
+      const [x,z]=root.userData.batch4Front;dir.set(x,.8,z);
+      distance=THREE.MathUtils.clamp(root.userData.m4ApproachDistance*.7,10,32);
     }
   }
   // Compose into the actual free area, not behind the side/bottom panel.
@@ -607,6 +645,13 @@ function focusPlace(it:SearchItem):void {
   flyTo(camera,controls,it.target,distance,1100,new THREE.Vector3(.35,1.3,1));
 }
 function homeView(): void {
+  if (campus.id === "huxi") {
+    const requested = new URLSearchParams(location.search).get("landmark");
+    const names: Record<string,string> = {library:"图书馆",zonghe:"综合楼",arts:"艺术楼",activity:"学生活动中心",teaching1:"第一教学楼",info:"信息技术科研楼",likelou:"理科楼",gongke:"工科大楼",gym:"体育馆",track:"田径场",mei:"梅园运动场",song:"松园运动场",lan:"兰园运动场",canteen1:"第一食堂",canteen2:"第二食堂",canteen3:"第三食堂",clinic:"校医院",bamboo:"竹园#4",dormmei:"梅园#4",dormsong:"松园四栋",dormlan:"兰园#3",lotus:"荷园#1",chrysanthemum:"菊园#1"};
+    Object.assign(names,{science:"虎溪科学中心",energy:"储能技术产教融合创新大楼",he_canteen:"荷园新食堂",southwest:"西南部景观"});
+    const place = requested && places.find(item => item.name === names[requested]);
+    if (place) { openDetail(place);focusPlace(place); return; }
+  }
   const customLandmark = new URLSearchParams(location.search).has("landmark");
   if (inVenuesPreview() || inHeritagePreview() || (inBatchPreview() && (!inFourthPreview() || customLandmark))) {
     const initial = inBatchPreview() ? initialBatch.name : inHeritagePreview() ? initialHeritage : initialVenue;
@@ -646,6 +691,16 @@ async function loadScene(): Promise<void> {
   const res = await fetch(campus.sceneUrl);
   if (!res.ok) throw new Error("scene.json 加载失败 (HTTP " + res.status + ")");
   const data: SceneData = await res.json();
+  let living:LivingData|undefined;
+  let newArea:NewAreaData|undefined;
+  if(campus.id==='huxi') {
+    const response=await fetch(import.meta.env.BASE_URL+'data/huxi-living.json');
+    if(!response.ok)throw new Error('Huxi living data loading failed');
+    living=await response.json();
+    const next=await fetch(import.meta.env.BASE_URL+'data/huxi-m5.json');
+    if(!next.ok)throw new Error('Huxi M5 data loading failed');
+    newArea=await next.json();
+  }
   const corridor = inCorridorPreview();
   const venues = inVenuesPreview();
   const batch = inBatchPreview();
@@ -679,7 +734,16 @@ async function loadScene(): Promise<void> {
   sceneData=data;
 
   const terrainMode = new URLSearchParams(location.search).get("terrain");
-  if (campus.id === "shapingba" && (terrainMode === "1" || corridor || venues || heritage) && data.boundary) {
+  if (campus.id === "huxi" && terrainMode !== "flat" && data.boundary) {
+    const response = await fetch(import.meta.env.BASE_URL + "data/huxi-terrain.json");
+    if (!response.ok) throw new Error("Huxi terrain grid loading failed");
+    const grid: TerrainGrid & {attribution: string; pads: Record<string,number>; waterLevels: Record<string,number>} = await response.json();
+    pads = grid.pads;
+    waterLevels = grid.waterLevels;
+    activeTerrain = createTerrain(grid);
+    terrainAttribution = "FABDEM V1-2 · ~30 m source · CC BY-NC-SA 4.0 · Local platforms estimated";
+    terrainGround = buildTerrainGround(scene, activeTerrain, data.boundary.pts);
+  } else if (campus.id === "shapingba" && (terrainMode === "1" || corridor || venues || heritage) && data.boundary) {
     const terrainResponse = await fetch(import.meta.env.BASE_URL + (corridor || venues || heritage
       ? "data/shapingba-corridor-terrain.json" : "data/shapingba-terrain.json"));
     if (!terrainResponse.ok) throw new Error("Terrain grid loading failed");
@@ -713,8 +777,8 @@ async function loadScene(): Promise<void> {
   const campusGreen = campusAreas(data.green, campusRings);
   const campusWater = campusAreas(data.water, campusRings);
   buildGreen(gGreen, gSports, campusGreen);
-  buildSportsMarks(gSports, campusGreen, revisedVenues, third);
-  buildPaving(gRoads, campusAreas(data.paving, campusRings));
+  buildSportsMarks(gSports, campusGreen, revisedVenues, third, campus.id === 'huxi');
+  buildPaving(gRoads, campusAreas(data.paving.filter(a=>!newArea||a.id!==-550020), campusRings));
   buildRoads(gRoads, data.boundary ? clipRoads(data.roads, data.boundary.pts) : data.roads);
   if (activeTerrain) {
     for (const water of campusWater) {
@@ -752,7 +816,7 @@ async function loadScene(): Promise<void> {
     for (const [x, y] of ring) campusPoints.push(new THREE.Vector3(x, groundHeight(x, y), -y));
   }
   for (const building of inside) {
-    if (activeTerrain && data.boundary && !inCampus(bboxCenterOfBuilding(building), data.boundary.pts)) continue;
+    if (campus.id === "shapingba" && activeTerrain && data.boundary && !inCampus(bboxCenterOfBuilding(building), data.boundary.pts)) continue;
     for (const [x, y] of building.polygon) campusPoints.push(new THREE.Vector3(x, baseOf(building) + building.height, -y));
   }
   // 标签全景压缩阈值随校区尺寸自适应（虎溪≈1700 不变；大校区按校内包围盒对角线放宽）
@@ -761,7 +825,19 @@ async function loadScene(): Promise<void> {
     const size = box.getSize(new THREE.Vector3());
     labels.overviewDistance = Math.max(1700, Math.hypot(size.x, size.z) * 1.15);
   }
-  if (!activeTerrain) gContext.add(buildContext(data));
+  if (!activeTerrain || campus.id === "huxi") {
+    const context = buildContext(data);
+    if (activeTerrain) context.traverse(object => {
+      const mesh = object as THREE.Mesh;
+      const position = mesh.geometry?.getAttribute("position");
+      if (!position) return;
+      for (let i=0; i<position.count; i++) position.setY(i,position.getY(i)+groundHeight(position.getX(i),-position.getZ(i)));
+      position.needsUpdate = true;
+      mesh.geometry.computeVertexNormals();
+      mesh.geometry.computeBoundingSphere();
+    });
+    gContext.add(context);
+  }
   boundaryLines.length = 0;
   for (const ring of campusRings) {
     const line = buildBoundaryLine({ pts: activeTerrain ? subdividePath([...ring, ring[0]]) : ring });
@@ -773,9 +849,21 @@ async function loadScene(): Promise<void> {
     scene.add(line);
   }
 
-  const generic = inside.filter(b => !b.landmark && !replacedByBatch(b.id) && !(heritage && isHeritageBuilding(b.id)));
+  // The two mapped science annexes are included in the m2 science GLB.
+  const generic = inside.filter(b => !b.landmark && !replacedByBatch(b.id) && !(heritage && isHeritageBuilding(b.id))
+    && !(newArea && String(b.id).startsWith('m5-'))
+    && !(living && b.style==='dorm')
+    && !(campus.id === "huxi" && ["14108774-2","14108774-3","1093483966","1093483968","1093483969"].includes(String(b.id))));
   const buildings = buildBuildings(scene, generic, baseOf);
   buildingsRef = buildings;
+  if(living) {
+    for(const b of inside.filter(b=>b.style==='dorm')) {
+      const model=buildHuxiDorm(b,living.entries[String(b.id)],baseOf(b));
+      tagAsset(model,b,model);buildings.add(model);
+    }
+    buildLivingApproaches(gRoads,living,groundHeight);
+  }
+  if(newArea)buildHuxiNewArea(gRoads,newArea,groundHeight);
   if (heritage) for (const b of inside.filter(b => isHeritageBuilding(b.id))) {
     const [cx, cy] = bboxCenterOfBuilding(b);
     const model = buildHeritageBuilding(Number(b.id), cx, cy, baseOf(b), third);
@@ -841,7 +929,10 @@ async function loadScene(): Promise<void> {
   const vegetationGroup = activeTerrain ? new THREE.Group() : gTrees;
   vegetation = buildVegetation(vegetationGroup, { green: data.green, roads: data.roads, water: campusWater, buildings: data.buildings, gardens: campus.gardens });
   if (activeTerrain) {
-    liftPlants(vegetationGroup, groundHeight);
+    liftPlants(vegetationGroup, (x,y) => {
+      const water = campusWater.find(area => area.outers.some(ring => inCampus([x,y],ring)) && !area.inners.some(ring => inCampus([x,y],ring)));
+      return water ? lakeHeight(water.id,x,y) : groundHeight(x,y);
+    });
     gTrees.add(vegetationGroup);
   }
   const jinOutline = campusWater.find((w) => w.name === "缙湖")?.outers[0] ?? null;
@@ -858,8 +949,8 @@ async function loadScene(): Promise<void> {
   statsVegCount = vegetation.counts.bushes + vegetation.counts.flowers + vegetation.counts.hedges + vegetation.counts.beds;
   // 环湖专类园标牌（植物园环湖带，随语言切换 relabel）
   for (const gl of vegetation.gardenLabels) {
-    labels.add(gl.zh, new THREE.Vector3(gl.x, 0, -gl.y), 2600, { cls: "gate", onClick: () => {
-      flyTo(camera, controls, new THREE.Vector3(gl.x, 0, -gl.y), 220);
+    labels.add(gl.zh, new THREE.Vector3(gl.x, groundHeight(gl.x,gl.y), -gl.y), 2600, { cls: "gate", onClick: () => {
+      flyTo(camera, controls, new THREE.Vector3(gl.x, groundHeight(gl.x,gl.y), -gl.y), 220);
     } });
   }
 
@@ -867,7 +958,8 @@ async function loadScene(): Promise<void> {
   dayNight.apply("day");
 
   routeNavigator = new Navigator(scene, data.graph, activeTerrain?.heightAt);
-  walkWorld=new WalkWorld(data, groundHeight, baseOf);
+  const walkData=living ? {...data,boundaries:[...(data.boundaries?.length?data.boundaries:data.boundary?[data.boundary.pts]:[]),...livingWalkBounds(living),...(newArea?newAreaWalkBounds(newArea):[])]} : data;
+  walkWorld=new WalkWorld(walkData, groundHeight, baseOf, area => lakeHeight(area.id,...bboxCenter(area.outers[0])));
   sharedLock=new SharedPointerLock(camera,renderer.domElement);
   walking=new Walking(camera,controls,walkWorld,sharedLock,(active,message)=>{
     walkRouteState=null;
@@ -937,7 +1029,7 @@ async function loadScene(): Promise<void> {
   for (const sel of ["#quick-start", "#shortcuts"]) {
     const sc=document.querySelector(sel);
     if(!sc) continue;
-    sc.classList.toggle("batch-shortcuts", batch);
+    sc.classList.toggle("batch-shortcuts", batch || campus.id === 'huxi');
     sc.innerHTML="";
     const shortcuts = batch ? previewSpots.map(s => [s.label, s.name]) : heritage ? HERITAGE_NAMES.map(name => [name, name]) : venues ? VENUE_SPOTS.map(spot => [spot.name, spot.name]) : corridor
       ? [["学生九舍", "A区学生九舍"], ["三食堂", "学生三食堂"], ["电影学院剧场", "美视电影学院剧场"]] : campus.shortcuts;
@@ -945,7 +1037,7 @@ async function loadScene(): Promise<void> {
       const b=document.createElement("button");
       b.type="button";b.textContent=label;b.dataset.shortcut=q;
       b.addEventListener("click",()=>{
-        const place = (corridor || venues || heritage) && places.find(item => item.name === q);
+        const place = (campus.id === "huxi" || corridor || venues || heritage) && places.find(item => item.name === q);
         if (place) { selectPlace(place); return; }
         const input = document.querySelector<HTMLInputElement>("#search")!;
         input.value = label;
@@ -1019,10 +1111,13 @@ async function loadScene(): Promise<void> {
   for (const g of data.gates) {
     const asset = GLB_GATES[g.name];
     const glb = asset ? await loadGateGLB(asset, g) : null;
-    scene.add(glb ?? buildGate(g));
+    const model = glb ?? buildGate(g);
+    model.position.y += groundHeight(g.x,g.y);
+    scene.add(model);
     const lb = gateLabel(g);
+    lb.pos.y += groundHeight(g.x,g.y);
     labels.add(lb.text, lb.pos, 6000, { cls: "gate", onClick: () => {
-      flyTo(camera, controls, new THREE.Vector3(g.x, 0, -g.y), 320);
+      flyTo(camera, controls, new THREE.Vector3(g.x, groundHeight(g.x,g.y), -g.y), 320);
     } });
   }
 
@@ -1060,7 +1155,7 @@ function rebuildTourStops(): void {
     // 园标签站：合成坐标站点（不进详情卡，解说走巡游条）
     return {
       name: st.name, kind: "building" as const,
-      target: new THREE.Vector3(st.x ?? 0, 0, -(st.y ?? 0)), distance: 240,
+      target: new THREE.Vector3(st.x ?? 0, groundHeight(st.x ?? 0,st.y ?? 0), -(st.y ?? 0)), distance: 240,
       group: "游览", num: "·",
     };
   });
@@ -1767,6 +1862,7 @@ function disposeCampus(): void {
   statsTreeCount = 0; statsVegCount = 0;
   sceneData = null; boundaryLines.length = 0; buildingsRef = null; dayNight = null;
   activeTerrain = null; terrainGround = null; terrainAttribution = "";
+  waterLevels = {};
   // three.js 官方卸载规范：几何/材质（数组）/贴图/InstancedMesh 实例缓冲
   scene.traverse((o) => {
     const g = o as THREE.Mesh & { geometry?: THREE.BufferGeometry };
@@ -2063,7 +2159,7 @@ renderer.setAnimationLoop((t) => {
 });
 
 // 调试入口（控制台用）
-Object.assign(window, { __huxi: { renderer, scene, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get terrain(){return activeTerrain;},get freeCam(){return freeCam;},get vegetation(){return vegetation;},get treeSys(){return treeSys;},get follow(){return followTarget;},followAt(mi:number,ii:number){const g=scene.getObjectByName('g-traffic');if(!g)return;let i=0;let target:THREE.InstancedMesh|undefined;g.traverse(o=>{if((o as THREE.InstancedMesh).isInstancedMesh){if(i===mi)target=o as THREE.InstancedMesh;i++;}});if(target)followTarget={mesh:target,id:ii};},get trafficCtl(){return trafficCtl;},switchCampus:(id:string)=>{void switchCampus(id);},get memInfo(){return {...renderer.info.memory};},reload(){return (async()=>{switching=true;disposeCampus();campus=CAMPUSES.huxi;await loadScene();renderLayers();renderLighting();homeView();switching=false;})();} } });
+Object.assign(window, { __huxi: { renderer, get scene(){return scene;}, get data(){return sceneData;}, camera, controls, detailAssets,get navigation(){return routeNavigator;},get walking(){return walking;},get terrain(){return activeTerrain;},get freeCam(){return freeCam;},get vegetation(){return vegetation;},get treeSys(){return treeSys;},get follow(){return followTarget;},followAt(mi:number,ii:number){const g=scene.getObjectByName('g-traffic');if(!g)return;let i=0;let target:THREE.InstancedMesh|undefined;g.traverse(o=>{if((o as THREE.InstancedMesh).isInstancedMesh){if(i===mi)target=o as THREE.InstancedMesh;i++;}});if(target)followTarget={mesh:target,id:ii};},get trafficCtl(){return trafficCtl;},switchCampus:(id:string)=>{void switchCampus(id);},get memInfo(){return {...renderer.info.memory};},reload(){return (async()=>{switching=true;disposeCampus();campus=CAMPUSES.huxi;await loadScene();renderLayers();renderLighting();homeView();switching=false;})();} } });
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-building-view]")) {
   button.addEventListener("click", () => focusBuilding(flyTargetBuilding, button.dataset.buildingView));

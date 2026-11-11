@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -77.0906502941043,
-      -56.13606098121144,
+      -77.94030257190181,
+      -56.96327827242462,
       0.0
     ],
     [
       77.09073312087843,
       56.12575348659112,
-      17.9
+      18.049999999999997
     ]
   ],
-  "triangles": 149752,
-  "bytes": 1429912,
+  "triangles": 144730,
+  "bytes": 1371320,
   "materials": 9,
   "heightConfidence": "OSM levels × 3.3m; not surveyed"
 }

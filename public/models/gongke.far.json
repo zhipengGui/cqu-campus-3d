@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -91.39998394343527,
-      -83.13498395425617,
+      -92.73810460011467,
+      -84.4731019165666,
       0.0
     ],
     [
-      91.39864118065515,
-      83.11091932268043,
-      16.34
+      92.7937203875902,
+      84.56036323875642,
+      32.45
     ]
   ],
-  "triangles": 65401,
-  "bytes": 570472,
-  "materials": 6,
-  "heightConfidence": "Current OSM identity only; no verified exterior photo, conservative model"
+  "triangles": 23303,
+  "bytes": 248428,
+  "materials": 11,
+  "heightConfidence": "C wing levels 2-7 documented by CQU. Overall and individual wing heights estimated from handover photographs; OSM footprint registration awaits survey."
 }

@@ -13,6 +13,7 @@ const COLORS:Record<string,number>={
   siqunNewTrack:0x398dbd,siqunNewTrackAlt:0x3688b6,
   sand:0xd9c38f,pool:0x438fae,lane:0x285e7a,track:0xba563f,trackAlt:0xb7543e,walk:0xbdbca9,
   frame:0x246752,metal:0x879593,orange:0xe5762c,glass:0xa7c7c6,net:0xb5c8c2,
+  huxiBlue:0x398fae,courtBlue:0x3d87a2,lanGray:0x647278,membrane:0xf1eee4,
 };
 const SUPPORTED=new Set(['basketball','soccer','tennis','badminton','volleyball','beachvolleyball','table_tennis']);
 // User confirmed on 2026-10-16: running track surrounds the football pitch next to the gym.
@@ -42,8 +43,10 @@ export function sportsFrame(ring:Pt[]) {
 }
 
 function bucket():Buckets{return Object.fromEntries(Object.keys(COLORS).map(k=>[k,[]]));}
-function polygon(b:Buckets,key:string,pts:Pt[],y=FLOOR):void {
-  const g=new THREE.ShapeGeometry(new THREE.Shape(pts.map(p=>new THREE.Vector2(...p))));
+function polygon(b:Buckets,key:string,pts:Pt[],y=FLOOR,holes:Pt[][]=[]):void {
+  const shape=new THREE.Shape(pts.map(p=>new THREE.Vector2(...p)));
+  shape.holes=holes.map(ring=>new THREE.Path(ring.map(p=>new THREE.Vector2(...p))));
+  const g=new THREE.ShapeGeometry(shape);
   g.rotateX(-Math.PI/2);g.translate(0,y,0);b[key].push(g);
 }
 function rect(b:Buckets,key:string,x0:number,v0:number,x1:number,v1:number,y=FLOOR):void {
@@ -85,10 +88,10 @@ function net(b:Buckets,width:number,top:number,bottom:number):void {
   for(let y=bottom;y<top;y+=.20)beam(b,'net',[-width/2,0,y],[width/2,0,y],.009,3);
 }
 
-function basketball(b:Buckets):void {
+function basketball(b:Buckets,court='courtGreen',key='courtKey'):void {
   // Disjoint colour regions avoid coplanar overlapping surfaces.
-  for(const p of [[-7.5,-14,-2.45,14],[2.45,-14,7.5,14],[-2.45,-8.2,2.45,8.2]])rect(b,'courtGreen',p[0],p[1],p[2],p[3]);
-  rect(b,'courtKey',-2.45,-14,2.45,-8.2);rect(b,'courtKey',-2.45,8.2,2.45,14);
+  for(const p of [[-7.5,-14,-2.45,14],[2.45,-14,7.5,14],[-2.45,-8.2,2.45,8.2]])rect(b,court,p[0],p[1],p[2],p[3]);
+  rect(b,key,-2.45,-14,2.45,-8.2);rect(b,key,-2.45,8.2,2.45,14);
   outline(b,-7.5,-14,7.5,14);line(b,[-7.5,0],[7.5,0]);arc(b,0,0,1.8);
   for(const s of [-1,1]) {
     const end=s*14,free=s*8.2,rim=s*12.425,start=s<0?0:Math.PI;
@@ -159,33 +162,94 @@ export function sportsSiteAreas(areas:Area[]):Area[] {
   const ring=oval(r+1.3,half).map(([x,v])=>[f.cx+x*c-v*s,f.cy+x*s+v*c] as Pt);
   return [{id:'confirmed-main-track',name:'田径场',kind:'track',sport:'running',outers:[ring],inners:[]}];
 }
-function track(b:Buckets,width:number,length:number,pitchWidth?:number,pitchLength?:number,siqun=false,refined=false):void {
+function track(b:Buckets,width:number,length:number,pitchWidth?:number,pitchLength?:number,siqun=false,refined=false,huxi=false):void {
   const outer=width/2-1,inner=outer-8*1.22,half=Math.max(0,length/2-outer);
   if(inner<10)return;
-  polygon(b,'apron',oval(outer+1.3,half),FLOOR-.025);
+  polygon(b,huxi?'huxiBlue':'apron',oval(outer+(huxi?4.5:1.3),half),FLOOR-.025,huxi?[oval(outer,half)]:[]);
   for(let lane=0;lane<8;lane++) {
     const p=oval(inner+lane*1.22,half),q=oval(inner+(lane+1)*1.22,half);
     const color = refined ? (lane%2?'siqunNewTrackAlt':'siqunNewTrack')
       : siqun ? (lane%2?'siqunTrackAlt':'siqunTrack') : (lane%2?'trackAlt':'track');
     for(let i=0;i<p.length;i++)polygon(b,color,[p[i],q[i],q[(i+1)%p.length],p[(i+1)%p.length]]);
   }
-  polygon(b,'turf',oval(inner,half),FLOOR-.01);
+  const pw=pitchWidth??Math.min(64,inner*1.8),pl=pitchLength??Math.min(100,half*2+inner*.55);
+  const pitch:Pt[]=[[-pw/2,-pl/2],[pw/2,-pl/2],[pw/2,pl/2],[-pw/2,pl/2]];
+  polygon(b,huxi?'huxiBlue':'turf',oval(inner,half),FLOOR-.01,huxi?[pitch]:[]);
   for(let lane=0;lane<=8;lane++){const p=oval(inner+lane*1.22,half);p.forEach((a,i)=>line(b,a,p[(i+1)%p.length],.075));}
   if(refined) for(const side of [-1,1]) {
     line(b,[side*inner,-half+5],[side*outer,-half+5],.105);
     line(b,[side*inner,-half+4.5],[side*outer,-half+4.5],.068);
   }
-  football(b,pitchWidth??Math.min(64,inner*1.8),pitchLength??Math.min(100,half*2+inner*.55));
+  football(b,pw,pl);
+  if(huxi) {
+    for(const side of [-1,1])line(b,[side*inner,-half+4],[side*outer,-half+4],.11);
+    // Low west-side spectator platform and the small tensile canopy visible in CQU's aerial.
+    // Platform heights and membrane dimensions are display estimates.
+    for(let row=0;row<3;row++)box(b,'walk',-outer-4-row*.85,.22+row*.16,0,.9,.28+row*.32,34);
+    for(let cell=0;cell<6;cell++) {
+      const v=-13.75+cell*5.5,x=-outer-6.0;
+      const corners:Pt[]=[[x-4.6,v-2.75],[x+4.6,v-2.75],[x+4.6,v+2.75],[x-4.6,v+2.75]];
+      const peak:[number,number,number]=[x,v,6.0];
+      for(let i=0;i<4;i++) {
+        const a=corners[i],c=corners[(i+1)%4];
+        const g=new THREE.BufferGeometry();
+        g.setAttribute('position',new THREE.Float32BufferAttribute([a[0],4.3,-a[1],c[0],4.3,-c[1],peak[0],peak[2],-peak[1]],3));
+        g.computeVertexNormals();b.membrane.push(g);
+        beam(b,'metal',[a[0],a[1],4.3],[c[0],c[1],4.3],.035);
+      }
+    }
+    for(let bay=0;bay<=6;bay++)for(const x of [-outer-10.6,-outer-1.4])beam(b,'metal',[x,-16.5+bay*5.5,.1],[x,-16.5+bay*5.5,4.5],.08);
+    for(const x of [-outer-7,outer+7])for(const v of [-half-22,half+22]) {
+      beam(b,'metal',[x,v,0],[x,v,22],.16);
+      box(b,'metal',x,22,v,3.6,.18,.24);
+      for(let i=0;i<4;i++)box(b,'mark',x-1.35+i*.9,22.1,v,.55,.42,.26);
+    }
+  }
+}
+
+function tableTennis(b:Buckets,x=0,v=0):void {
+  const h=FLOOR+.76;
+  box(b,'courtBlue',x,h,v,2.74,.06,1.525);
+  for(const s of [-1,1]) {
+    beam(b,'mark',[x-1.35,v+s*.74,h+.035],[x+1.35,v+s*.74,h+.035],.012);
+    beam(b,'mark',[x+s*1.35,v-.74,h+.035],[x+s*1.35,v+.74,h+.035],.012);
+    for(const t of [-1,1])beam(b,'frame',[x+s*.9,v+t*.5,FLOOR],[x+s*.9,v+t*.5,h],.045);
+  }
+  beam(b,'mark',[x-1.35,v,h+.04],[x+1.35,v,h+.04],.012);
+  box(b,'net',x,h+.10,v,.025,.15,1.7);
+}
+
+function fence(b:Buckets,width:number,length:number):void {
+  const ring:Pt[]=[[-width/2,-length/2],[width/2,-length/2],[width/2,length/2],[-width/2,length/2]];
+  ring.forEach((a,i)=>{
+    const c=ring[(i+1)%4],len=Math.hypot(c[0]-a[0],c[1]-a[1]),n=Math.max(1,Math.ceil(len/2.5));
+    for(let j=0;j<=n;j++) {
+      if(i===0 && Math.abs(j/n-.5)<.035)continue;
+      const p:Pt=[a[0]+(c[0]-a[0])*j/n,a[1]+(c[1]-a[1])*j/n];
+      beam(b,'frame',[p[0],p[1],FLOOR],[p[0],p[1],3.0],.035);
+    }
+    for(const z of [1,2,3]) {
+      if(i===0)for(const [lo,hi]of [[0,.46],[.54,1]])
+        beam(b,'frame',[a[0]+(c[0]-a[0])*lo,a[1]+(c[1]-a[1])*lo,z],[a[0]+(c[0]-a[0])*hi,a[1]+(c[1]-a[1])*hi,z],.022);
+      else beam(b,'frame',[a[0],a[1],z],[c[0],c[1],z],.022);
+    }
+  });
 }
 
 /** A single local frame per footprint, followed by material batching. */
-export function buildSportsMarks(parent:THREE.Object3D,areas:Area[],siqunPreview=false,siqunRefined=false):void {
+export function buildSportsMarks(parent:THREE.Object3D,areas:Area[],siqunPreview=false,siqunRefined=false,huxiRefined=false):void {
   const all=bucket(),counts:Record<string,number>={};
   const confirmed=areas.filter(detailedSport).map(a=>sportsFrame(a.outers[0])).filter(f=>!!f);
   for(const a of areas.filter(a=>a.kind==='pitch'&&!a.sport)) {
     // Shared circulation within a mapped bank; no inferred court counts or running tracks.
     if(confirmed.filter(f=>inCampus([f.cx,f.cy],a.outers[0])).length>=2)
       for(const outer of a.outers)polygon(all,'walk',outer,.055);
+    if(huxiRefined && [1057528491,472504372,472504374,472504360].includes(Number(a.id))) {
+      const f=sportsFrame(a.outers[0]);if(!f)continue;
+      const b=bucket();fence(b,f.width-.5,f.length-.5);
+      const matrix=new THREE.Matrix4().makeRotationY(f.angle);matrix.setPosition(f.cx,0,-f.cy);
+      for(const [key,geos]of Object.entries(b))for(const g of geos){g.applyMatrix4(matrix);all[key].push(g);}
+    }
   }
   for(const a of areas) {
     if(!detailedSport(a)||!a.outers[0])continue;
@@ -194,19 +258,27 @@ export function buildSportsMarks(parent:THREE.Object3D,areas:Area[],siqunPreview
     const local=(p:Pt):Pt=>{const x=p[0]-f.cx,v=p[1]-f.cy,c=Math.cos(f.angle),s=Math.sin(f.angle);return [x*c+v*s,-x*s+v*c];};
     const pad=sport==='pool'?'pool':sport==='tennis'?'tennis':sport==='soccer'?'turf':sport==='beachvolleyball'?'sand':'apron';
     for(const outer of a.outers) {
+      // The refined track already has disjoint apron, lane and pitch surfaces.
+      if(huxiRefined && a.id===VERIFIED_TRACK.pitchId)continue;
       const shape=new THREE.Shape(outer.map(p=>new THREE.Vector2(...local(p))));
       for(const hole of a.inners)shape.holes.push(new THREE.Path(hole.map(p=>new THREE.Vector2(...local(p)))));
       const g=new THREE.ShapeGeometry(shape);g.rotateX(-Math.PI/2);g.translate(0,FLOOR-.025,0);b[pad].push(g);
     }
     const pads=new Set(b[pad]);let scale=1;
     if(sport==='basketball'&&f.width<=18&&f.length<=34) {
-      scale=Math.min(1,f.width/15,f.length/28);basketball(b);
+      scale=Math.min(1,f.width/15,f.length/28);basketball(b,huxiRefined&&f.cy<0?'lanGray':'courtGreen',huxiRefined&&f.cy>0?'courtBlue':'courtKey');
     } else if(sport==='soccer') {
       if(siqunPreview && a.id===412480742) {
         track(b,98,195,f.width-2,f.length-3,true,siqunRefined);counts.track=(counts.track??0)+1;
       } else if(a.id===VERIFIED_TRACK.pitchId) {
-        track(b,VERIFIED_TRACK.width,VERIFIED_TRACK.length,f.width-2,f.length-3);counts.track=(counts.track??0)+1;
+        track(b,VERIFIED_TRACK.width,VERIFIED_TRACK.length,f.width-2,f.length-3,false,false,huxiRefined);counts.track=(counts.track??0)+1;
       } else football(b,Math.max(10,f.width-2),Math.max(16,f.length-3));
+    }
+    else if(sport==='table_tennis' && huxiRefined) {
+      if(a.id===1057528507) {
+        for(let row=0;row<10;row++)for(let col=0;col<5;col++)tableTennis(b,(col-2)*4.3,(row-4.5)*5.2);
+        counts['table-tables']=(counts['table-tables']??0)+50;
+      } else { tableTennis(b);counts['table-tables']=(counts['table-tables']??0)+1; }
     }
     else if(['tennis','badminton','volleyball','beachvolleyball'].includes(sport)) {
       const w=sport==='tennis'?10.97:sport==='badminton'?6.1:9,l=sport==='tennis'?23.77:sport==='badminton'?13.4:18;
@@ -229,7 +301,7 @@ export function buildSportsMarks(parent:THREE.Object3D,areas:Area[],siqunPreview
     if(!geos.length)continue;
     const g=mergeGeometries(geos)!;for(const p of geos)p.dispose();
     const material=key==='mark'?new THREE.MeshBasicMaterial({color:COLORS[key],polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}):
-      new THREE.MeshLambertMaterial({color:COLORS[key],polygonOffset:key==='lane',polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+      new THREE.MeshLambertMaterial({color:COLORS[key],side:key==='membrane'?THREE.DoubleSide:THREE.FrontSide,polygonOffset:key==='lane',polygonOffsetFactor:-1,polygonOffsetUnits:-1});
     material.name=key;
     const mesh=new THREE.Mesh(g,material);mesh.name='sports-'+key;mesh.receiveShadow=key!=='mark';mesh.castShadow=false;
     parent.add(mesh);triangles+=(g.index?.count??g.attributes.position.count)/3;calls++;

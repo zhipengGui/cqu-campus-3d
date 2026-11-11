@@ -47,7 +47,8 @@ for(const [sport,width,length] of [['soccer',68,105],['tennis',16,26],['badminto
 const data=JSON.parse(readFileSync(new URL('../public/data/scene.json',import.meta.url),'utf8'));
 const before=JSON.stringify(data);const group=new THREE.Group();buildSportsMarks(group,campusAreas(data.green,data.boundary.pts));
 let calls=0,triangles=0;group.traverse(o=>{if(o instanceof THREE.Mesh){calls++;triangles+=(o.geometry.index?.count??o.geometry.attributes.position.count)/3;}});
-assert.ok(calls<=24&&triangles<65000,'sports must remain batched and bounded');
+// M3 adds visible nets, boards and rims; retain batching and an explicit geometry budget.
+assert.ok(calls<=24&&triangles<100000,'sports must remain batched and bounded');
 assert.equal(JSON.stringify(data),before,'rendering must not mutate mapped data or navigation');
 console.log('PASS all mapped sports surfaces and immutable inputs',JSON.stringify({calls,triangles}));
 const trackSurfaces=group.children.filter(o=>o instanceof THREE.Mesh&&[0xba563f,0xb7543e].includes(o.material.color.getHex()));
@@ -62,3 +63,8 @@ for(const mesh of trackSurfaces) {
   }
 }
 console.log('PASS confirmed track location and football/track clearance');
+const refined=new THREE.Group();buildSportsMarks(refined,campusAreas(data.green,data.boundary.pts),false,false,true);
+assert.ok(refined.userData.sports.drawCalls<=24&&refined.userData.sports.triangles<150000,'refined sports must also remain within the display budget');
+assert.ok(refined.getObjectByName('sports-membrane'),'the photographed track canopy must be retained');
+assert.equal(JSON.stringify(data),before,'refined sports must retain immutable mapped data');
+console.log('PASS M3 sports canopy, batching and geometry budget',refined.userData.sports.triangles);

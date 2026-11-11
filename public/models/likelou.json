@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -57.65846918079715,
-      -80.34721363505216,
+      -99.38001868051967,
+      -90.5811872538076,
       0.0
     ],
     [
-      57.69,
-      80.37999047173433,
-      31.339999999999996
+      58.06999999999999,
+      80.75467544815305,
+      31.6
     ]
   ],
-  "triangles": 107536,
-  "bytes": 835400,
-  "materials": 8,
+  "triangles": 152287,
+  "bytes": 1230128,
+  "materials": 9,
   "heightConfidence": "Official overall height and storeys; detailed elevations remain estimated"
 }

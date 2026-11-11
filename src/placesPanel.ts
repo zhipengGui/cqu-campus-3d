@@ -85,7 +85,8 @@ export function collectPlaces(
     });
   }
 
-  for(const [name,area]of [['田径场',sportsSiteAreas(data.green)[0]],['室外球场区',data.green.find(a=>a.id===1057528491)]] as const) {
+  for(const [name,area]of [['田径场',sportsSiteAreas(data.green)[0]],['室外球场区',data.green.find(a=>a.id===1057528491)],
+    ['梅园运动场',data.green.find(a=>a.id===1057528491)],['松园运动场',data.green.find(a=>a.id===472504372)],['兰园运动场',data.green.find(a=>a.id===472504360)]] as const) {
     const f=area&&sportsFrame(area.outers[0]);if(!f)continue;
     entries.push({name,kind:'sports',group:'运动',num:'',target:new THREE.Vector3(f.cx,0,-f.cy),
       distance:300,extent:{width:f.width,length:f.length}});

@@ -108,5 +108,45 @@
     "confirmed": false,
     "label": "西门附近道路",
     "source": "OSM 地点中心至最近路段投影，待入口核实"
+  },
+  {
+    "name": "虎溪科学中心",
+    "point": [
+      -1119.3410964162813,
+      599.1685591709062
+    ],
+    "confirmed": false,
+    "label": "虎溪科学中心暂估入口",
+    "source": "M5 display entrance; unmeasured doorway. https://www.cqu.edu.cn/info/1111/46351.htm"
+  },
+  {
+    "name": "储能技术产教融合创新大楼",
+    "point": [
+      -389.824285242148,
+      -242.16478352013573
+    ],
+    "confirmed": false,
+    "label": "储能技术产教融合创新大楼暂估入口",
+    "source": "M5 display entrance; unmeasured doorway. https://news.cqu.edu.cn/archives/news2/content/2025/10/28/93ad51e061bade4d66e8af56ed0f0036235518aa.html"
+  },
+  {
+    "name": "荷园新食堂",
+    "point": [
+      -286.6164784386403,
+      -445.40424539062803
+    ],
+    "confirmed": false,
+    "label": "荷园新食堂暂估入口",
+    "source": "M5 display entrance; unmeasured doorway. https://news.cqu.edu.cn/info/1002/886731.htm"
+  },
+  {
+    "name": "西南部景观",
+    "point": [
+      -518,
+      -463
+    ],
+    "confirmed": false,
+    "label": "西南部景观暂估休憩点",
+    "source": "M5 illustrative landscape plaza; not a survey position."
   }
 ]

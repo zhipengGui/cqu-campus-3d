@@ -2,13 +2,31 @@
 
 在浏览器中探索重庆大学虎溪校区与沙坪坝 A 区。地图支持旋转、缩放、地点搜索和交互导览，可通过电脑或手机访问。
 
+当前展示版本为 **m5（2026-11-11）**，包含虎溪 m1–m5 的基础地形和分区精修成果，以及已上线的沙坪坝 A 区。版本号显示在地图左上角和浏览器标题中。
+
 **[打开虎溪校区](https://zhipenggui.github.io/cqu-campus-3d/)** · **[打开沙坪坝 A 区](https://zhipenggui.github.io/cqu-campus-3d/?campus=shapingba)**
 
 原创代码与模型 © 2026 ZhipengGui，保留所有权利。使用授权请通过 GitHub Issues 联系作者。第三方数据和解码器遵循下文所列许可。
 
 [项目源码](https://github.com/zhipengGui/cqu-campus-3d) · [反馈问题与建议](https://github.com/zhipengGui/cqu-campus-3d/issues)
 
-![虎溪校区三维地图全景](docs/screenshots/v9-campus.png)
+![m5 虎溪校区三维地图全景](docs/screenshots/m5-campus.png)
+
+## 虎溪 m1–m5
+
+| 版本 | 完成内容 |
+| --- | --- |
+| m1 | 全校基础地形；图书馆、综合楼、艺术楼、学生活动中心及周边地坪 |
+| m2 | 第一教学楼、信息技术科研楼、理科楼和工科大楼的体量与细部 |
+| m3 | 体育馆及附馆、田径场和梅园/松园/兰园运动场；修正活动中心白色楼翼误改 |
+| m4 | 三处食堂、校医院、现有宿舍记录的窗洞、栏杆、门厅和道路接入 |
+| m5 | 科学中心、储能大楼、荷园新食堂，西南部园路、休憩铺地、座椅与绿化 |
+
+[科学中心](https://zhipenggui.github.io/cqu-campus-3d/?landmark=science) · [储能大楼](https://zhipenggui.github.io/cqu-campus-3d/?landmark=energy) · [荷园新食堂](https://zhipenggui.github.io/cqu-campus-3d/?landmark=he_canteen) · [西南部景观](https://zhipenggui.github.io/cqu-campus-3d/?landmark=southwest)
+
+![m5 储能大楼双庭院与屋顶绿化](docs/screenshots/m5-energy.png)
+
+三处新地标的导航已接入本版暂估入口。荷园新食堂展示计划完成形态，校方报道计划于 2027 年投用；储能楼当前投用状态待核。具体位置、未见立面和局部地坪包含估算，详见[版本与资料说明](docs/HUXI_MILESTONES.md)。
 
 ## 探索沙坪坝 A 区
 
@@ -18,7 +36,8 @@
 
 ## 探索虎溪
 
-- **校园地标**：综合楼、第一教学楼、信息技术科研楼、图书馆、理科楼、体育馆、学生活动中心与工科大楼，以及北门、东门和西门。
+- **校园地标**：综合楼、第一教学楼、信息技术科研楼、图书馆、理科楼、体育馆、学生活动中心、艺术楼、工科大楼、科学中心与储能大楼，以及北门、东门和西门。
+- **生活区与新建区**：三处既有食堂、校医院、宿舍片区和荷园新食堂完成形态预览；步道、入口及平台与展示地形衔接。
 - **湖景与运动场地**：浏览缙湖、云湖及校园绿地，查看田径场、足球场、篮球场、网球场等运动区域。
 - **地点搜索**：按名称搜索建筑、湖泊或运动场地，点击地图或地点列表查看介绍并定位。
 - **多种观察视角**：重点建筑支持鸟瞰、立面和庭院近景，方便观察建筑布局与细节。
@@ -41,15 +60,17 @@
 | 平移地图 | 鼠标右键拖拽 | 双指拖动 |
 | 查看地点 | 点击建筑、标签或地点列表 | 点按建筑、标签或地点列表 |
 
-点击“综合楼”“体育区”“图书馆”快捷入口可以快速开始探索。工具栏中的主页按钮可返回校园全景；手机端点击右上角“···”可展开缩放、分享和图片导出等工具。
+侧栏首行提供科学中心、储能大楼、荷园新食堂和西南景观快捷入口，其他楼栋可从地点列表或搜索进入。工具栏中的主页按钮可返回校园全景；手机端点击右上角“···”可展开缩放、分享和图片导出等工具。
 
-点击“路线导航”，选择起点和终点，也可用“地图选点”指定位置；支持交换两端点与从地点详情直接导航。路线目的地目前为附近道路，楼门位置尚待核实。
+点击“路线导航”，选择起点和终点，也可用“地图选点”指定位置；支持交换两端点与从地点详情直接导航。科学中心、储能楼与荷园新食堂使用本版暂估入口，其他地点使用已配置的接近点或附近道路。
 
-电脑端点击“步行漫游”，选择地点后点击开始，浏览器会锁定鼠标。使用 WASD 移动、鼠标转向，按住 Shift 加速，按 Esc 返回地图。默认速度3.5m/s，加速为8m/s。漫游为平面室外体验，通行范围依据已映射的道路与铺装，建筑、水面和校界设有基础碰撞。
+电脑端点击“步行漫游”，选择地点后点击开始，浏览器会锁定鼠标。使用 WASD 移动、鼠标转向，按住 Shift 加速，按 Esc 返回地图。默认速度3.5m/s，加速为8m/s。室外漫游沿展示地形调整高度，通行范围依据已映射的道路与铺装，建筑、水面和校界设有基础碰撞。
 
 工具栏 ✈ 或按 V 进入自由视角飞行：WASD 移动、Space 上升、C 下降、Shift 加速、滚轮调节速度，建筑与地图范围设有碰撞边界（手机端用虚拟摇杆）。“开始游览”提供经典全线、植物花卉（联动春季）与建筑鉴赏三条主题路线；点击路上的行人或观光车可开启跟拍。工具栏 ⚑ 可在地图上标点发起纠错。首次访问会自动弹出功能导览，也可在“关于”中重新查看。
 
 ## 更新日志
+
+- **m5（2026-11-11）**：发布虎溪 m1–m5 累积精修与地形，新增科学中心、储能楼和荷园新食堂直达入口；西南景观园路与休憩点接通；修正新建区与旧手工宿舍占位冲突，补齐新入口导航。保留沙坪坝 A 区详细地图及平面总图。
 
 - **v12（2026-10-25）**：11 栋新精建地标（三食堂/海吉亚医院/实验楼/药学院等）；地标 GLB 流式加载（首屏零等待）；校园动态层（行人漫步、白色观光车与校车、五处人流热点）；步行导航引导（步行前往/偏航重算/到达提示）；主题游览线与电影运镜；自由视角飞行（桌面+手机摇杆）；行人/车辆/动画独立开关；新用户功能导览与地图纠错入口；许可证由 MIT 调整为保留所有权利。
 - **v11（2026-10-24）**：观感升级（夜景窗灯/程序化天空/楼型色相/材质细节）；补入科学中心、海吉亚医院、荷园、菊园、储能大楼等新建筑与熙街周边；图书馆/综合楼/一教/科学中心精细建模；宿舍精修（坡顶/窗户/阳台）；中英双语；植物园绿化（行道树数据化、环湖七专类园、四季季相）。
@@ -76,7 +97,15 @@ npm run build
 
 产物位于 `dist/`。部署到子目录时，通过环境变量 `BASE_PATH` 设置站点路径；本项目 GitHub Pages 使用 `/cqu-campus-3d/`。
 
-本仓库提供地图前端、运行用 GLB、渲染模块、场景数据和地形网格。Blender 工程、离线制作工具、原始照片、原始高程瓦片和内部核对资料由作者单独维护。
+## 发布范围
+
+| 仓库与在线 Demo 包含 | 本地单独维护 |
+| --- | --- |
+| 前端代码、浏览器端建模与渲染模块、近/远景 GLB、场景和地形网格、道路与入口数据、预览截图 | Blender 工程、离线建模/导出工具、制作参数、原始参考照片与 PDF、原始 DEM 瓦片、内部核对表、备份、日志和缓存 |
+
+线上体验使用完整运行资源。浏览器加载的 GLB、JSON 和 JavaScript 属于公开展示资源；原创代码与模型的使用仍须获得作者授权。仓库通过 `.gitignore` 排除本地制作目录、原始素材和构建产物。
+
+推送到 `main` 后，GitHub Actions 自动安装依赖、构建并发布 GitHub Pages。`dist/` 由工作流生成，不直接提交。
 
 ## 关于地图
 
@@ -86,7 +115,7 @@ npm run build
 
 - 项目的视觉表现与实现参考了 [gxu-campus-3d](https://github.com/wcqqq1214/gxu-campus-3d)。
 - 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，遵循 ODbL。
-- A 区详细场景使用裁剪、重采样并局部调整的 FABDEM V1-2。署名 Neal、Hawker、Uhe、Paulo、Sosa、Savage 和 Sampson（2023），University of Bristol。派生网格遵循 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。[FABDEM 数据集](https://doi.org/10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn)
-- 基础地形使用 [Copernicus DEM GLO-30 Public](https://registry.opendata.aws/copernicus-dem/)。Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 provided under COPERNICUS by the European Union and ESA. All rights reserved.
+- 虎溪与 A 区详细场景使用裁剪、重采样并局部调整的 FABDEM V1-2，原始分辨率约 30 米，展示网格与局部平台为插值及估算。署名 Neal、Hawker、Uhe、Paulo、Sosa、Savage 和 Sampson（2023），University of Bristol。派生网格遵循 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。[FABDEM 数据集](https://doi.org/10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn)
+- 早期基础地形及 FABDEM 上游数据涉及 [Copernicus DEM GLO-30 Public](https://registry.opendata.aws/copernicus-dem/)。Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 provided under COPERNICUS by the European Union and ESA. All rights reserved.
 - 参考照片来自重庆大学公开图集，照片权利属于原权利人。
 - Draco 解码器采用 Apache License 2.0，详见 [public/draco](public/draco/)。

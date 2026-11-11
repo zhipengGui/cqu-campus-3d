@@ -15,6 +15,10 @@ docs/screenshots/*
 !docs/screenshots/v9-campus.png
 !docs/screenshots/v9-sports.png
 !docs/screenshots/v9-zonghe.png
+!docs/screenshots/m5-campus.png
+!docs/screenshots/m5-energy.png
+!docs/screenshots/m5-science.png
+!docs/HUXI_MILESTONES.md
 *.blend
 *.blend1
 .env

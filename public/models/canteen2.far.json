@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -33.03496238357714,
-      -50.8,
-      -0.10000000000000009
+      -33.287746086624054,
+      -38.83693707350354,
+      0.0
     ],
     [
-      33.03496903564203,
-      37.784968869494115,
-      10.2
+      33.28749596481562,
+      38.03750253423303,
+      14.425
     ]
   ],
-  "triangles": 16142,
-  "bytes": 134112,
+  "triangles": 12254,
+  "bytes": 107244,
   "materials": 5,
-  "heightConfidence": "OSM 13.2 default overridden to 3 storeys; flat roof per satellite (uniform brightness)"
+  "heightConfidence": "Four-storey display reconstruction, including lower service level; exact levels/height require complete elevations."
 }

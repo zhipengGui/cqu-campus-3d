@@ -6,18 +6,18 @@
   "roofCourtyardsOpen": true,
   "bounds": [
     [
-      -71.97996812384355,
-      -64.96495823925511,
+      -72.17053896541448,
+      -65.16989368214841,
       0.0
     ],
     [
-      71.97965532922336,
-      64.96484358555993,
-      16.34
+      72.22408942784921,
+      65.13534463005901,
+      16.6
     ]
   ],
-  "triangles": 27628,
-  "bytes": 267784,
+  "triangles": 24076,
+  "bytes": 253792,
   "materials": 4,
   "heightConfidence": "Footprint from OSM, overall height and detailed facade estimated"
 }
